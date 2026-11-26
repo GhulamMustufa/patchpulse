@@ -4,8 +4,9 @@ import { ToastProvider } from "@/components/ui/Toast";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "NecroCode | AI Software Resurrection Lab (AWS Kiroween)",
-  description: "Autonomous digital autopsy and legacy repository resurrection engine powered by Kiro Spec-Driven Development.",
+  title: "NecroCode | Fix Broken Legacy Code & Verify With Real Tests",
+  description:
+    "Repair outdated Python, JavaScript, and TypeScript code and verify every fix safely inside an offline test sandbox.",
 };
 
 export default function RootLayout({

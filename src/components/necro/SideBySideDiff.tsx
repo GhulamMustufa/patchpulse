@@ -1,36 +1,34 @@
 "use client";
 
 import React, { useState } from "react";
-import { VerificationStatus } from "@/lib/necro-engine/types";
-import { useToast } from "@/components/ui/Toast";
 import {
-  Zap,
-  Copy,
-  Check,
-  Download,
-  FileCode2,
-  Sparkles,
-  Terminal,
   AlertTriangle,
-  ShieldCheck,
-  GitCompare,
+  Check,
+  CheckCircle2,
+  Columns2,
+  Copy,
+  Download,
+  FileDiff,
+  Loader2,
+  Play,
+  Sparkles,
 } from "lucide-react";
+import { LanguageType, VerificationStatus } from "@/lib/necro-engine/types";
 
 interface SideBySideDiffProps {
   deadCode: string;
   resurrectedCode: string;
   unifiedDiff?: string;
   activeFilePath?: string;
-  language: string;
+  language: LanguageType;
   isResurrecting: boolean;
   isResurrected: boolean;
   onResurrect: () => void;
-  resurrectionSteps: string[];
   warnings?: string[];
   verificationStatus?: VerificationStatus;
   repairSourceLabel?: string;
-  isCustomMode: boolean;
-  onCustomCodeChange: (code: string) => void;
+  isCustomMode?: boolean;
+  onCustomCodeChange?: (code: string) => void;
   isApproved?: boolean;
   onApproveChanges?: () => void;
   onResetApproval?: () => void;
@@ -39,412 +37,379 @@ interface SideBySideDiffProps {
   canRunSandbox?: boolean;
 }
 
+function getFriendlyStatus(
+  verificationStatus?: VerificationStatus,
+  isResurrected?: boolean
+): { label: string; badgeClass: string } {
+  if (verificationStatus === "PASSED") {
+    return {
+      label: "All Tests Passed",
+      badgeClass: "bg-emerald-950/60 text-emerald-300 border-emerald-500/40",
+    };
+  }
+  if (verificationStatus === "PARTIAL") {
+    return {
+      label: "Some Tests Failed",
+      badgeClass: "bg-amber-950/60 text-amber-300 border-amber-500/40",
+    };
+  }
+  if (verificationStatus === "FAILED") {
+    return {
+      label: "Tests Failed",
+      badgeClass: "bg-rose-950/60 text-rose-300 border-rose-500/40",
+    };
+  }
+  if (verificationStatus === "VERIFICATION_BLOCKED") {
+    return {
+      label: "Tests Blocked",
+      badgeClass: "bg-orange-950/60 text-orange-300 border-orange-500/40",
+    };
+  }
+  if (verificationStatus === "NO_TESTS_FOUND") {
+    return {
+      label: "Syntax OK • No Tests",
+      badgeClass: "bg-cyan-950/60 text-cyan-300 border-cyan-500/40",
+    };
+  }
+  if (verificationStatus === "SYNTAX_PASSED_SANDBOX_PENDING" || isResurrected) {
+    return {
+      label: "Syntax OK • Ready to Test",
+      badgeClass: "bg-cyan-950/60 text-cyan-300 border-cyan-500/40",
+    };
+  }
+  return {
+    label: "Needs Repair",
+    badgeClass: "bg-slate-900 text-slate-300 border-slate-700",
+  };
+}
+
+function formatRepairSource(raw?: string): string | null {
+  if (!raw) return null;
+  const lower = raw.toLowerCase();
+  if (lower.includes("gemini") || lower.includes("hybrid")) {
+    return "Gemini AI + Rules";
+  }
+  if (lower.includes("ast") || lower.includes("fallback") || lower.includes("deterministic")) {
+    return "Built-in Rules";
+  }
+  return raw;
+}
+
 export function SideBySideDiff({
   deadCode,
   resurrectedCode,
-  unifiedDiff = "",
+  unifiedDiff,
   activeFilePath,
   language,
   isResurrecting,
   isResurrected,
   onResurrect,
-  resurrectionSteps,
-  warnings = [],
-  verificationStatus = "UNVERIFIED",
+  warnings,
+  verificationStatus,
   repairSourceLabel,
   isCustomMode,
   onCustomCodeChange,
-  isApproved = false,
+  isApproved,
   onApproveChanges,
   onResetApproval,
   onRunSandboxTests,
-  isRunningSandbox = false,
-  canRunSandbox = false,
+  isRunningSandbox,
+  canRunSandbox,
 }: SideBySideDiffProps) {
   const [copied, setCopied] = useState<"code" | "patch" | null>(null);
   const [viewMode, setViewMode] = useState<"split" | "diff">("split");
-  const { toast } = useToast();
 
-  const handleCopy = async () => {
-    const target = isResurrected && resurrectedCode ? resurrectedCode : deadCode;
-    await navigator.clipboard.writeText(target);
-    setCopied("code");
-    toast({
-      title: isResurrected ? "Copied repaired code" : "Copied original code",
-      description: isResurrected
-        ? "Repaired artifact copied to clipboard."
-        : "Original source copied (run repair first to copy modernized code).",
-      type: "info",
-    });
-    setTimeout(() => setCopied(null), 2000);
+  const statusMeta = getFriendlyStatus(verificationStatus, isResurrected);
+  const friendlyEngine = formatRepairSource(repairSourceLabel);
+
+  const handleCopyCode = async () => {
+    const content = resurrectedCode || deadCode;
+    if (!content) return;
+    try {
+      await navigator.clipboard.writeText(content);
+      setCopied("code");
+      setTimeout(() => setCopied(null), 2000);
+    } catch {
+      // Clipboard blocked in restricted browser contexts
+    }
   };
 
   const handleCopyPatch = async () => {
     if (!unifiedDiff) return;
-    await navigator.clipboard.writeText(unifiedDiff);
-    setCopied("patch");
-    toast({
-      title: "Copied unified diff",
-      description: `Patch for ${activeFilePath || "artifact"} copied to clipboard.`,
-      type: "success",
-    });
-    setTimeout(() => setCopied(null), 2000);
+    try {
+      await navigator.clipboard.writeText(unifiedDiff);
+      setCopied("patch");
+      setTimeout(() => setCopied(null), 2000);
+    } catch {
+      // Clipboard blocked
+    }
   };
 
   const handleDownload = () => {
-    if (!isResurrected || !resurrectedCode) return;
+    const content = resurrectedCode || deadCode;
+    if (!content) return;
     const ext =
       language === "python" ? "py" : language === "typescript" ? "ts" : "js";
-    const fileName = activeFilePath
-      ? activeFilePath.split("/").pop() || `resurrected_artifact.${ext}`
-      : `resurrected_artifact.${ext}`;
-    const blob = new Blob([resurrectedCode], {
-      type: "text/plain;charset=utf-8",
-    });
+    const filename =
+      activeFilePath?.split("/").pop() || `fixed-code.${ext}`;
+    const blob = new Blob([content], { type: "text/plain;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = fileName;
+    link.download = filename;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
-    toast({
-      title: "Artifact downloaded",
-      description: `Saved ${fileName}`,
-      type: "success",
-    });
   };
 
-  const isFailed = verificationStatus === "FAILED";
+  const defaultFileLabel =
+    activeFilePath ||
+    (language === "python"
+      ? "main.py"
+      : language === "typescript"
+        ? "index.ts"
+        : "index.js");
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-800 bg-[#070b14] p-3 shadow-lg">
-        <div className="flex flex-wrap items-center gap-2">
-          <Terminal className="h-4 w-4 text-purple-400" />
-          <span className="text-xs font-mono font-semibold uppercase tracking-wider text-slate-300">
-            Resurrection Operating Theatre
+    <section
+      aria-label="Code editor and repair diff"
+      className="rounded-xl border border-slate-800 bg-[#070b14] overflow-hidden shadow-lg"
+    >
+      {/* Streamlined Action Bar */}
+      <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 border-b border-slate-800 bg-[#0b101d]">
+        <div className="flex items-center gap-2.5 flex-wrap">
+          <span className="text-xs font-mono font-medium text-slate-200 bg-slate-900 border border-slate-800 px-2.5 py-1 rounded-md">
+            {defaultFileLabel}
           </span>
-          {activeFilePath && (
-            <span className="rounded bg-cyan-950/60 border border-cyan-800/60 px-2 py-0.5 text-[10px] font-mono text-cyan-200">
-              {activeFilePath}
-            </span>
-          )}
-          <span className="rounded bg-slate-800 px-2 py-0.5 text-[10px] font-mono text-slate-300">
-            Target: {language.toUpperCase()}
+          <span
+            className={`px-2.5 py-0.5 rounded-full border text-xs font-medium ${statusMeta.badgeClass}`}
+          >
+            {statusMeta.label}
           </span>
-          {repairSourceLabel && isResurrected && (
-            <span className="rounded bg-purple-950/60 border border-purple-700/50 px-2 py-0.5 text-[10px] font-mono text-purple-200">
-              {repairSourceLabel}
+          {friendlyEngine && (
+            <span className="text-xs text-slate-400 hidden sm:inline">
+              via {friendlyEngine}
             </span>
           )}
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            onClick={onResurrect}
-            disabled={isResurrecting || !deadCode.trim()}
-            className={`flex items-center gap-2 rounded-lg px-4 py-2 font-mono text-xs font-bold uppercase tracking-wider shadow-lg transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed ${
-              isResurrecting
-                ? "bg-amber-600 text-amber-100 cursor-wait"
-                : isFailed
-                ? "bg-rose-600 hover:bg-rose-500 text-white"
-                : isResurrected
-                ? "bg-cyan-600 hover:bg-cyan-500 text-white"
-                : "bg-purple-600 hover:bg-purple-500 text-white"
-            }`}
+        <div className="flex items-center gap-2 flex-wrap">
+          {/* Split / Diff segmented control */}
+          <div
+            role="group"
+            aria-label="Code view mode"
+            className="inline-flex rounded-lg border border-slate-800 bg-[#04070e] p-0.5"
           >
-            <Zap className={`h-4 w-4 ${isResurrecting ? "animate-spin" : ""}`} />
-            {isResurrecting
-              ? "Diagnosing & Repairing..."
-              : isResurrected
-              ? "Re-Run Repair"
-              : "Diagnose & Repair"}
-          </button>
-
-          {isResurrected && unifiedDiff && (
             <button
               type="button"
-              onClick={() => setViewMode(viewMode === "split" ? "diff" : "split")}
-              className="flex items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-900/80 px-3 py-2 text-xs font-mono text-slate-200 hover:bg-slate-800 transition-colors"
-            >
-              <GitCompare className="h-3.5 w-3.5 text-cyan-400" />
-              {viewMode === "split" ? "Unified Diff" : "Split View"}
-            </button>
-          )}
-
-          {isResurrected && onApproveChanges && !isFailed && (
-            <button
-              type="button"
-              onClick={isApproved ? onResetApproval : onApproveChanges}
-              className={`flex items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-mono transition-colors ${
-                isApproved
-                  ? "border-emerald-500/70 bg-emerald-950/50 text-emerald-300"
-                  : "border-slate-700 bg-slate-900/80 text-slate-200 hover:border-emerald-500/50"
+              onClick={() => setViewMode("split")}
+              className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium cursor-pointer transition-colors ${
+                viewMode === "split"
+                  ? "bg-slate-800 text-white"
+                  : "text-slate-400 hover:text-slate-200"
               }`}
             >
-              <ShieldCheck className="h-3.5 w-3.5" />
-              {isApproved ? "Patch Approved" : "Approve Patch"}
+              <Columns2 className="w-3.5 h-3.5" />
+              Split
             </button>
-          )}
-
-          {isResurrected && canRunSandbox && onRunSandboxTests && (
             <button
               type="button"
-              onClick={onRunSandboxTests}
-              disabled={isRunningSandbox}
-              className="flex items-center gap-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 px-3 py-2 text-xs font-mono font-bold text-white transition-colors"
+              onClick={() => setViewMode("diff")}
+              disabled={!unifiedDiff}
+              className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium cursor-pointer transition-colors disabled:opacity-40 ${
+                viewMode === "diff"
+                  ? "bg-slate-800 text-white"
+                  : "text-slate-400 hover:text-slate-200"
+              }`}
             >
-              <Terminal className={`h-3.5 w-3.5 ${isRunningSandbox ? "animate-spin" : ""}`} />
-              {isRunningSandbox ? "Running Sandbox..." : "Run Sandbox Tests"}
+              <FileDiff className="w-3.5 h-3.5" />
+              Diff
             </button>
-          )}
+          </div>
 
-          {isResurrected && unifiedDiff && (
+          {/* Copy & Download */}
+          {viewMode === "diff" && unifiedDiff && (
             <button
               type="button"
               onClick={handleCopyPatch}
-              className="flex items-center gap-1.5 rounded-lg border border-slate-800 bg-slate-900/80 px-3 py-2 text-xs font-mono text-slate-300 hover:border-slate-700 hover:bg-slate-800 transition-colors"
+              className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-slate-700 bg-slate-900 hover:bg-slate-800 text-xs text-slate-200 cursor-pointer"
             >
               {copied === "patch" ? (
-                <Check className="h-3.5 w-3.5 text-emerald-400" />
+                <Check className="w-3.5 h-3.5 text-emerald-400" />
               ) : (
-                <Copy className="h-3.5 w-3.5" />
+                <Copy className="w-3.5 h-3.5 text-slate-400" />
               )}
-              {copied === "patch" ? "Patch Copied" : "Copy Patch"}
+              {copied === "patch" ? "Copied" : "Copy Diff"}
             </button>
           )}
 
           <button
             type="button"
-            onClick={handleCopy}
-            className="flex items-center gap-1.5 rounded-lg border border-slate-800 bg-slate-900/80 px-3 py-2 text-xs font-mono text-slate-300 hover:border-slate-700 hover:bg-slate-800 transition-colors"
+            onClick={handleCopyCode}
+            aria-label="Copy code"
+            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-slate-700 bg-slate-900 hover:bg-slate-800 text-xs text-slate-200 cursor-pointer"
           >
             {copied === "code" ? (
-              <Check className="h-3.5 w-3.5 text-emerald-400" />
+              <Check className="w-3.5 h-3.5 text-emerald-400" />
             ) : (
-              <Copy className="h-3.5 w-3.5" />
+              <Copy className="w-3.5 h-3.5 text-slate-400" />
             )}
-            {copied === "code"
-              ? "Copied!"
-              : isResurrected
-              ? "Copy Repaired"
-              : "Copy Source"}
+            <span>{copied === "code" ? "Copied" : "Copy"}</span>
           </button>
 
           <button
             type="button"
             onClick={handleDownload}
-            disabled={!isResurrected || !resurrectedCode}
-            className={`flex items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-mono transition-colors ${
-              isResurrected && resurrectedCode
-                ? "border-slate-800 bg-slate-900/80 text-slate-300 hover:border-slate-700 hover:bg-slate-800"
-                : "border-slate-800/40 bg-slate-950/40 text-slate-600 cursor-not-allowed"
-            }`}
+            aria-label="Download fixed file"
+            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-slate-700 bg-slate-900 hover:bg-slate-800 text-xs text-slate-200 cursor-pointer"
           >
-            <Download className="h-3.5 w-3.5" />
-            Download
+            <Download className="w-3.5 h-3.5 text-slate-400" />
+            <span className="hidden sm:inline">Download</span>
           </button>
+
+          {/* Step 1: Fix Code */}
+          <button
+            type="button"
+            onClick={onResurrect}
+            disabled={isResurrecting}
+            className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-purple-600 hover:bg-purple-500 disabled:opacity-50 text-xs font-semibold text-white transition-colors cursor-pointer"
+          >
+            {isResurrecting ? (
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            ) : (
+              <Sparkles className="w-3.5 h-3.5" />
+            )}
+            {isResurrecting
+              ? "Fixing..."
+              : isResurrected
+                ? "Re-run Fix"
+                : "Fix Code"}
+          </button>
+
+          {/* Step 2 & 3: Approve + Run Tests */}
+          {resurrectedCode && onApproveChanges && onResetApproval && (
+            <button
+              type="button"
+              onClick={isApproved ? onResetApproval : onApproveChanges}
+              aria-pressed={Boolean(isApproved)}
+              className={`inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border text-xs font-medium cursor-pointer transition-colors ${
+                isApproved
+                  ? "bg-emerald-950/60 text-emerald-200 border-emerald-500/50"
+                  : "bg-slate-900 text-slate-300 border-slate-700 hover:border-slate-500"
+              }`}
+            >
+              <CheckCircle2 className="w-3.5 h-3.5" />
+              {isApproved ? "Approved" : "Approve Fix"}
+            </button>
+          )}
+
+          {resurrectedCode && onRunSandboxTests && (
+            <button
+              type="button"
+              onClick={onRunSandboxTests}
+              disabled={!canRunSandbox || isRunningSandbox}
+              title={
+                !isApproved
+                  ? "Approve the proposed changes first to run tests"
+                  : "Run tests inside an isolated sandbox"
+              }
+              className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-45 text-xs font-semibold text-white transition-colors cursor-pointer"
+            >
+              {isRunningSandbox ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <Play className="w-3.5 h-3.5" />
+              )}
+              {isRunningSandbox ? "Testing..." : "Run Tests"}
+            </button>
+          )}
         </div>
       </div>
 
-      {viewMode === "diff" && isResurrected && unifiedDiff ? (
-        <div className="overflow-hidden rounded-xl border border-slate-800 bg-[#06080e] p-4 font-mono text-xs shadow-xl">
-          <div className="text-slate-400 mb-2 pb-2 border-b border-slate-800">
-            Unified Patch Review ({activeFilePath || "artifact"})
+      {/* Inline Warnings if any */}
+      {warnings && warnings.length > 0 && (
+        <div className="px-4 py-2 bg-amber-950/30 border-b border-amber-500/20 flex items-center gap-2 text-xs text-amber-200">
+          <AlertTriangle className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+          <span>{warnings[0]}</span>
+        </div>
+      )}
+
+      {/* Editor / Diff Body */}
+      {viewMode === "split" ? (
+        <div className="grid grid-cols-1 lg:grid-cols-2 divide-y lg:divide-y-0 lg:divide-x divide-slate-800">
+          {/* Original Code */}
+          <div className="flex flex-col min-w-0">
+            <div className="flex items-center justify-between px-4 py-2 bg-[#090e1a] border-b border-slate-800/80 text-xs">
+              <span className="font-medium text-slate-300">Original Code</span>
+              {isCustomMode && (
+                <span className="text-[11px] text-purple-300">Editable</span>
+              )}
+            </div>
+            {isCustomMode && onCustomCodeChange ? (
+              <textarea
+                value={deadCode}
+                onChange={(e) => onCustomCodeChange(e.target.value)}
+                aria-label="Original source code input"
+                spellCheck={false}
+                className="w-full h-80 bg-[#04070e] p-4 font-mono text-xs text-slate-200 leading-relaxed focus:outline-none resize-y"
+              />
+            ) : (
+              <pre className="h-80 overflow-auto bg-[#04070e] p-4 font-mono text-xs text-slate-300 leading-relaxed">
+                <code>{deadCode}</code>
+              </pre>
+            )}
           </div>
-          <pre className="overflow-x-auto leading-relaxed max-h-[500px]">
-            {unifiedDiff.split("\n").map((line, idx) => (
-              <div
-                key={idx}
-                className={
-                  line.startsWith("+") && !line.startsWith("+++")
-                    ? "bg-emerald-950/40 text-emerald-300 px-2"
-                    : line.startsWith("-") && !line.startsWith("---")
-                    ? "bg-rose-950/40 text-rose-300 px-2"
-                    : line.startsWith("@@")
-                    ? "text-cyan-400 px-2"
-                    : "text-slate-400 px-2"
-                }
-              >
-                {line}
+
+          {/* Fixed Code */}
+          <div className="flex flex-col min-w-0">
+            <div className="flex items-center justify-between px-4 py-2 bg-[#090e1a] border-b border-slate-800/80 text-xs">
+              <span className="font-medium text-emerald-300">Fixed Code</span>
+              {!resurrectedCode && (
+                <span className="text-[11px] text-slate-500">
+                  Waiting for Fix Code
+                </span>
+              )}
+            </div>
+            {resurrectedCode ? (
+              <pre className="h-80 overflow-auto bg-[#04070e] p-4 font-mono text-xs text-emerald-100 leading-relaxed">
+                <code>{resurrectedCode}</code>
+              </pre>
+            ) : (
+              <div className="h-80 flex flex-col items-center justify-center bg-[#04070e] px-6 text-center text-xs text-slate-400 space-y-2">
+                <Sparkles className="w-6 h-6 text-purple-400/70" />
+                <p>
+                  Click <strong className="text-slate-200">Fix Code</strong>{" "}
+                  above to diagnose issues and generate updated code.
+                </p>
               </div>
-            ))}
-          </pre>
+            )}
+          </div>
         </div>
       ) : (
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-          <div className="overflow-hidden rounded-xl border border-rose-900/60 bg-[#090b10] shadow-xl">
-            <div className="flex items-center justify-between border-b border-rose-950/80 bg-rose-950/30 px-4 py-2.5">
-              <div className="flex items-center gap-2">
-                <span className="h-2.5 w-2.5 rounded-full bg-rose-500/80" />
-                <span className="font-mono text-xs font-bold uppercase tracking-wider text-rose-300">
-                  Original Source (Preserved)
-                </span>
-              </div>
-              <span className="font-mono text-[10px] text-rose-400/80">
-                {isCustomMode ? "Editable Input" : "Read-Only Snapshot"}
-              </span>
-            </div>
-
-            <div className="relative p-3 font-mono text-xs">
-              {isCustomMode ? (
-                <textarea
-                  value={deadCode}
-                  onChange={(e) => onCustomCodeChange(e.target.value)}
-                  rows={20}
-                  aria-label="Custom legacy source code input"
-                  className="w-full resize-y rounded-lg border border-slate-800 bg-[#06080e] p-3 text-rose-200 font-mono text-xs focus:border-rose-500 focus:outline-none focus:ring-1 focus:ring-rose-500"
-                  placeholder="Paste legacy Python, JavaScript, or TypeScript code here..."
-                />
-              ) : (
-                <pre className="overflow-x-auto rounded-lg bg-[#06080e] p-3 text-rose-200 leading-relaxed max-h-[500px]">
-                  <code>{deadCode}</code>
-                </pre>
-              )}
-            </div>
-          </div>
-
-          <div
-            className={`overflow-hidden rounded-xl border transition-all duration-300 shadow-xl ${
-              isFailed
-                ? "border-rose-800/80 bg-[#120709]"
-                : isResurrected
-                ? "border-cyan-800/80 bg-[#071014] ring-1 ring-cyan-500/30"
-                : "border-slate-800 bg-[#090b10]"
-            }`}
-          >
-            <div
-              className={`flex items-center justify-between border-b px-4 py-2.5 ${
-                isFailed
-                  ? "border-rose-950/80 bg-rose-950/40"
-                  : isResurrected
-                  ? "border-cyan-950/80 bg-cyan-950/40"
-                  : "border-slate-800/80 bg-slate-900/40"
-              }`}
-            >
-              <div className="flex items-center gap-2">
-                <span
-                  className={`h-2.5 w-2.5 rounded-full ${
-                    isFailed
-                      ? "bg-rose-400"
-                      : isResurrected
-                      ? "bg-cyan-400"
-                      : "bg-slate-600"
-                  }`}
-                />
-                <span
-                  className={`font-mono text-xs font-bold uppercase tracking-wider ${
-                    isFailed
-                      ? "text-rose-300"
-                      : isResurrected
-                      ? "text-cyan-300"
-                      : "text-slate-400"
-                  }`}
-                >
-                  {isFailed
-                    ? "Proposed Patch (Verification Failed)"
-                    : isResurrected
-                    ? "Proposed Modernized Artifact"
-                    : "Post-Mortem Incubator (Standby)"}
-                </span>
-              </div>
-              {isResurrected && (
-                <span
-                  className={`flex items-center gap-1 rounded px-2 py-0.5 text-[10px] font-mono border ${
-                    isFailed
-                      ? "bg-rose-500/20 text-rose-300 border-rose-500/40"
-                      : "bg-cyan-500/20 text-cyan-300 border-cyan-500/40"
-                  }`}
-                >
-                  <Sparkles className="h-3 w-3" />
-                  {isFailed
-                    ? "VALIDATION FAILED"
-                    : verificationStatus === "PASSED"
-                    ? "SANDBOX TESTS PASSED"
-                    : verificationStatus === "PARTIAL"
-                    ? "PARTIAL TEST PASS"
-                    : verificationStatus === "NO_TESTS_FOUND"
-                    ? "SYNTAX OK • NO_TESTS_FOUND"
-                    : verificationStatus === "VERIFICATION_BLOCKED"
-                    ? "VERIFICATION BLOCKED"
-                    : verificationStatus === "SYNTAX_PASSED_SANDBOX_PENDING"
-                    ? "SYNTAX OK • SANDBOX PENDING"
-                    : "UNVERIFIED"}
-                </span>
-              )}
-            </div>
-
-            <div className="relative p-3 font-mono text-xs">
-              {isResurrecting ? (
-                <div className="flex h-[380px] flex-col items-center justify-center gap-3 text-center">
-                  <Zap className="h-8 w-8 text-amber-400 animate-spin" />
-                  <p className="font-mono text-xs text-amber-300">
-                    Analyzing AST, generating repair patch, and validating syntax...
-                  </p>
+        <div className="bg-[#04070e] h-80 overflow-auto p-4 font-mono text-xs leading-relaxed">
+          {unifiedDiff ? (
+            unifiedDiff.split("\n").map((line, idx) => {
+              const colorClass = line.startsWith("+") && !line.startsWith("+++")
+                ? "bg-emerald-950/40 text-emerald-200"
+                : line.startsWith("-") && !line.startsWith("---")
+                  ? "bg-rose-950/40 text-rose-200"
+                  : line.startsWith("@@")
+                    ? "text-cyan-300"
+                    : "text-slate-400";
+              return (
+                <div key={idx} className={`px-2 whitespace-pre ${colorClass}`}>
+                  {line || " "}
                 </div>
-              ) : isResurrected ? (
-                <pre
-                  className={`overflow-x-auto rounded-lg p-3 leading-relaxed max-h-[500px] ${
-                    isFailed
-                      ? "bg-[#0d0507] text-rose-200"
-                      : "bg-[#040a0e] text-emerald-300"
-                  }`}
-                >
-                  <code>{resurrectedCode}</code>
-                </pre>
-              ) : (
-                <div className="flex h-[380px] flex-col items-center justify-center gap-2 text-center text-slate-500">
-                  <FileCode2 className="h-8 w-8 opacity-40" />
-                  <p className="text-xs">
-                    Incubator standby. Click{" "}
-                    <span className="font-semibold text-purple-400">
-                      &ldquo;Diagnose &amp; Repair&rdquo;
-                    </span>{" "}
-                    to generate and syntax-check repairs.
-                  </p>
-                </div>
-              )}
-            </div>
-          </div>
+              );
+            })
+          ) : (
+            <p className="text-slate-400">
+              No diff available yet. Run Fix Code first.
+            </p>
+          )}
         </div>
       )}
-
-      {warnings.length > 0 && (
-        <div className="rounded-xl border border-amber-800/60 bg-amber-950/30 p-4 space-y-1.5">
-          <h4 className="flex items-center gap-2 font-mono text-xs font-bold uppercase tracking-wider text-amber-300">
-            <AlertTriangle className="h-3.5 w-3.5" />
-            Migration Warnings ({warnings.length})
-          </h4>
-          <ul className="list-disc pl-5 text-xs text-amber-200/90 space-y-1">
-            {warnings.map((w, idx) => (
-              <li key={idx}>{w}</li>
-            ))}
-          </ul>
-        </div>
-      )}
-
-      {isResurrected && resurrectionSteps.length > 0 && (
-        <div className="rounded-xl border border-cyan-900/50 bg-[#061014] p-4">
-          <h4 className="flex items-center gap-2 font-mono text-xs font-bold uppercase tracking-wider text-cyan-300 mb-2">
-            <Sparkles className="h-3.5 w-3.5" />
-            Repair Operations Applied ({resurrectionSteps.length}):
-          </h4>
-          <ul className="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs font-mono text-slate-200">
-            {resurrectionSteps.map((step, idx) => (
-              <li
-                key={idx}
-                className="flex items-start gap-2 rounded bg-slate-900/60 p-2 border border-slate-800"
-              >
-                <span className="text-cyan-400 font-bold">[{idx + 1}]</span>
-                <span>{step}</span>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-    </div>
+    </section>
   );
 }

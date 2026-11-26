@@ -1,27 +1,20 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import Link from "next/link";
-import { Button } from "@/components/ui/Button";
-import { Badge } from "@/components/ui/Badge";
 import {
-  Card,
-  CardHeader,
-  CardTitle,
-  CardDescription,
-  CardContent,
-} from "@/components/ui/Card";
-import { PRESET_PATIENTS } from "@/lib/necro-engine/patients";
-import {
-  ArrowLeft,
   Activity,
-  ShieldCheck,
-  Database,
+  ArrowLeft,
+  BookOpen,
   Cpu,
-  AlertTriangle,
+  Database,
+  RefreshCw,
+  ShieldCheck,
+  Sparkles,
 } from "lucide-react";
+import { PRESET_PATIENTS } from "@/lib/necro-engine/patients";
 
-interface HealthSnapshot {
+interface HealthPayload {
   status: string;
   timestamp: string;
   version: string;
@@ -31,154 +24,232 @@ interface HealthSnapshot {
     ai: string;
     github: string;
     sandbox: string;
+    runtimes?: string[];
+  };
+}
+
+function formatDatabaseStatus(val?: string) {
+  if (val === "connected_serverless") {
+    return {
+      title: "Connected (Neon Postgres)",
+      detail: "Autopsy reports and job telemetry are persisted to serverless Postgres.",
+      tone: "text-emerald-300",
+    };
+  }
+  return {
+    title: "Temporary Memory",
+    detail: "Running without an external database; data stays in memory for this session.",
+    tone: "text-amber-300",
+  };
+}
+
+function formatAiStatus(val?: string) {
+  if (val === "live_gemini_configured") {
+    return {
+      title: "Gemini AI Ready",
+      detail: "Uses Google Gemini alongside deterministic syntax checks for repairs.",
+      tone: "text-emerald-300",
+    };
+  }
+  return {
+    title: "Built-in Rules Mode",
+    detail: "No Gemini API key detected — using fast offline AST and compiler repair rules.",
+    tone: "text-cyan-300",
+  };
+}
+
+function formatSandboxStatus(val?: string) {
+  if (val === "isolated_worker_configured") {
+    return {
+      title: "Isolated Sandbox Ready",
+      detail: "Approved code runs offline inside an isolated Docker or macOS Seatbelt worker.",
+      tone: "text-emerald-300",
+    };
+  }
+  return {
+    title: "Local / Safe Fail-Closed",
+    detail: "Remote sandbox worker URL not set; uses safe local isolation or blocks if unavailable.",
+    tone: "text-amber-300",
   };
 }
 
 export default function DashboardPage() {
-  const [health, setHealth] = useState<HealthSnapshot | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [health, setHealth] = useState<HealthPayload | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  const loadHealth = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/health");
+      if (res.ok) {
+        setHealth((await res.json()) as HealthPayload);
+      }
+    } catch {
+      // Keep graceful empty state
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    let active = true;
-    fetch("/api/health")
-      .then((res) => {
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        return res.json() as Promise<HealthSnapshot>;
-      })
-      .then((data) => {
-        if (active) setHealth(data);
-      })
-      .catch((err: unknown) => {
-        if (active) {
-          setError(err instanceof Error ? err.message : "Failed to load health telemetry");
-        }
-      });
-    return () => {
-      active = false;
-    };
+    void loadHealth();
   }, []);
 
-  return (
-    <div className="min-h-screen bg-[#05070d] text-slate-100 flex flex-col">
-      <header className="border-b border-slate-800 bg-[#070b14]/90 backdrop-blur-md px-4 sm:px-6 py-3 flex items-center justify-between sticky top-0 z-30">
-        <div className="flex items-center gap-3 min-w-0">
-          <Link href="/">
-            <Button variant="outline" size="sm" className="border-slate-700 text-slate-200 hover:bg-slate-800">
-              <ArrowLeft className="w-4 h-4 mr-1" /> Lab
-            </Button>
-          </Link>
-          <span className="font-mono font-bold text-sm sm:text-base tracking-tight truncate">
-            NecroCode System Telemetry
-          </span>
-          <Badge variant={health ? "success" : "secondary"} className="hidden sm:inline-flex">
-            {health ? `Status: ${health.status}` : "Checking..."}
-          </Badge>
-        </div>
+  const dbInfo = formatDatabaseStatus(health?.integrations.database);
+  const aiInfo = formatAiStatus(health?.integrations.ai);
+  const sandboxInfo = formatSandboxStatus(health?.integrations.sandbox);
 
-        <Link href="/docs">
-          <Button variant="outline" size="sm" className="border-slate-700 text-slate-200 hover:bg-slate-800">
-            API Docs
-          </Button>
-        </Link>
+  return (
+    <div className="min-h-screen bg-[#05070d] text-slate-100">
+      <header className="border-b border-slate-800/80 bg-[#070b14]/90 backdrop-blur-md px-4 sm:px-6 py-3">
+        <div className="max-w-6xl mx-auto flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <Link
+              href="/lab"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-800 bg-slate-900/80 px-3 py-1.5 text-xs font-medium text-slate-200 hover:border-slate-700"
+            >
+              <ArrowLeft className="w-3.5 h-3.5" />
+              Back to Workspace
+            </Link>
+            <h1 className="text-base font-semibold text-white">
+              System Status
+            </h1>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={loadHealth}
+              disabled={loading}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-800 bg-slate-900 px-3 py-1.5 text-xs text-slate-300 hover:text-white cursor-pointer"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} />
+              Refresh
+            </button>
+            <Link
+              href="/docs"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-800 bg-slate-900 px-3 py-1.5 text-xs text-slate-300 hover:text-white"
+            >
+              <BookOpen className="w-3.5 h-3.5 text-purple-400" />
+              Guide &amp; API
+            </Link>
+          </div>
+        </div>
       </header>
 
-      <main className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 space-y-6">
-        {error && (
-          <div className="rounded-xl border border-rose-800 bg-rose-950/40 p-4 text-xs font-mono text-rose-300 flex items-center gap-2">
-            <AlertTriangle className="h-4 w-4 shrink-0" />
-            Failed to reach /api/health: {error}
-          </div>
-        )}
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          <Card className="bg-[#070b14] border-slate-800 text-slate-100">
-            <CardHeader className="pb-2">
-              <CardDescription className="flex items-center justify-between text-xs text-slate-400">
-                <span>AI Engine Mode</span>
-                <Cpu className="w-4 h-4 text-purple-400" />
-              </CardDescription>
-              <CardTitle className="text-base font-mono text-slate-100">
-                {health?.integrations.ai ?? "loading..."}
-              </CardTitle>
-            </CardHeader>
-          </Card>
-
-          <Card className="bg-[#070b14] border-slate-800 text-slate-100">
-            <CardHeader className="pb-2">
-              <CardDescription className="flex items-center justify-between text-xs text-slate-400">
-                <span>Database Mode</span>
-                <Database className="w-4 h-4 text-cyan-400" />
-              </CardDescription>
-              <CardTitle className="text-base font-mono text-slate-100">
-                {health?.integrations.database ?? "loading..."}
-              </CardTitle>
-            </CardHeader>
-          </Card>
-
-          <Card className="bg-[#070b14] border-slate-800 text-slate-100">
-            <CardHeader className="pb-2">
-              <CardDescription className="flex items-center justify-between text-xs text-slate-400">
-                <span>Execution Sandbox</span>
-                <ShieldCheck className="w-4 h-4 text-amber-400" />
-              </CardDescription>
-              <CardTitle className="text-base font-mono text-amber-300">
-                {health?.integrations.sandbox ?? "syntax_only_phase_2"}
-              </CardTitle>
-            </CardHeader>
-          </Card>
-
-          <Card className="bg-[#070b14] border-slate-800 text-slate-100">
-            <CardHeader className="pb-2">
-              <CardDescription className="flex items-center justify-between text-xs text-slate-400">
-                <span>Preset Patients</span>
-                <Activity className="w-4 h-4 text-emerald-400" />
-              </CardDescription>
-              <CardTitle className="text-base font-mono text-emerald-400">
-                {PRESET_PATIENTS.length} Seeded Subjects
-              </CardTitle>
-            </CardHeader>
-          </Card>
+      <main className="max-w-6xl mx-auto px-4 py-8 space-y-8">
+        <div className="space-y-1">
+          <h2 className="text-xl font-bold text-white">
+            Service &amp; Sandbox Health
+          </h2>
+          <p className="text-sm text-slate-400">
+            Live configuration for AI repair, storage, and isolated test execution.
+          </p>
         </div>
 
-        <Card className="bg-[#070b14] border-slate-800 text-slate-100">
-          <CardHeader>
-            <CardTitle className="text-base font-mono text-slate-100">
-              Pre-Seeded Historical Subjects
-            </CardTitle>
-            <CardDescription className="text-xs text-slate-400">
-              Reference repositories available for immediate 1-click inspection in the Operating Theatre.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="divide-y divide-slate-800">
-              {PRESET_PATIENTS.map((patient) => (
-                <div
-                  key={patient.id}
-                  className="py-3 flex flex-wrap items-center justify-between gap-3"
-                >
-                  <div>
-                    <div className="font-medium text-sm text-slate-100">
-                      {patient.name}
-                    </div>
-                    <div className="text-xs font-mono text-slate-400">
-                      {patient.repoSlug} • Died {patient.deceasedYear}
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Badge variant="outline" className="border-slate-700 text-slate-300">
-                      {patient.language}
-                    </Badge>
-                    <Link href="/">
-                      <Button size="sm" variant="outline" className="border-slate-700 text-slate-200 hover:bg-slate-800">
-                        Open in Lab
-                      </Button>
-                    </Link>
-                  </div>
-                </div>
-              ))}
+        <section
+          aria-label="Service status cards"
+          className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4"
+        >
+          <div className="rounded-xl border border-slate-800 bg-[#070b14] p-4 space-y-2">
+            <div className="flex items-center justify-between text-xs text-slate-400">
+              <span>AI Repair Engine</span>
+              <Sparkles className="w-4 h-4 text-purple-400" />
             </div>
-          </CardContent>
-        </Card>
+            <div className={`text-sm font-semibold ${aiInfo.tone}`}>
+              {loading ? "Checking..." : aiInfo.title}
+            </div>
+            <p className="text-xs text-slate-400 leading-relaxed">
+              {aiInfo.detail}
+            </p>
+          </div>
+
+          <div className="rounded-xl border border-slate-800 bg-[#070b14] p-4 space-y-2">
+            <div className="flex items-center justify-between text-xs text-slate-400">
+              <span>Test Sandbox</span>
+              <ShieldCheck className="w-4 h-4 text-emerald-400" />
+            </div>
+            <div className={`text-sm font-semibold ${sandboxInfo.tone}`}>
+              {loading ? "Checking..." : sandboxInfo.title}
+            </div>
+            <p className="text-xs text-slate-400 leading-relaxed">
+              {sandboxInfo.detail}
+            </p>
+          </div>
+
+          <div className="rounded-xl border border-slate-800 bg-[#070b14] p-4 space-y-2">
+            <div className="flex items-center justify-between text-xs text-slate-400">
+              <span>Storage</span>
+              <Database className="w-4 h-4 text-cyan-400" />
+            </div>
+            <div className={`text-sm font-semibold ${dbInfo.tone}`}>
+              {loading ? "Checking..." : dbInfo.title}
+            </div>
+            <p className="text-xs text-slate-400 leading-relaxed">
+              {dbInfo.detail}
+            </p>
+          </div>
+
+          <div className="rounded-xl border border-slate-800 bg-[#070b14] p-4 space-y-2">
+            <div className="flex items-center justify-between text-xs text-slate-400">
+              <span>Supported Runtimes</span>
+              <Cpu className="w-4 h-4 text-amber-400" />
+            </div>
+            <div className="text-sm font-semibold text-white">
+              Python 3.12 • Node 20 • TS 5.9
+            </div>
+            <p className="text-xs text-slate-400 leading-relaxed">
+              Syntax checking, type validation, and offline test execution across all 3 runtimes.
+            </p>
+          </div>
+        </section>
+
+        <section className="space-y-4">
+          <div className="flex items-center justify-between">
+            <div className="space-y-0.5">
+              <h2 className="text-lg font-semibold text-white flex items-center gap-2">
+                <Activity className="w-4 h-4 text-purple-400" />
+                Included Sample Projects
+              </h2>
+              <p className="text-xs text-slate-400">
+                Try these built-in legacy projects inside the main workspace.
+              </p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {PRESET_PATIENTS.map((patient) => (
+              <div
+                key={patient.id}
+                className="rounded-xl border border-slate-800 bg-[#070b14] p-4 flex flex-col justify-between gap-3"
+              >
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="px-2 py-0.5 rounded bg-slate-900 border border-slate-800 text-slate-300 font-medium capitalize">
+                      {patient.language}
+                    </span>
+                    <span className="text-slate-400 font-mono">
+                      {patient.deceasedYear}
+                    </span>
+                  </div>
+                  <h3 className="text-sm font-semibold text-white">
+                    {patient.name}
+                  </h3>
+                  <p className="text-xs text-slate-400 leading-relaxed">
+                    {patient.tombstoneInscription}
+                  </p>
+                </div>
+
+                <Link
+                  href={`/lab?sample=${encodeURIComponent(patient.id)}`}
+                  className="inline-flex items-center justify-center rounded-lg border border-purple-500/40 bg-purple-600/20 hover:bg-purple-600/30 px-3 py-1.5 text-xs font-medium text-purple-200 transition-colors"
+                >
+                  Open in Workspace
+                </Link>
+              </div>
+            ))}
+          </div>
+        </section>
       </main>
     </div>
   );

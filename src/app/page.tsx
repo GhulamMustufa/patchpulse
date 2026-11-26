@@ -1,1119 +1,473 @@
 "use client";
 
-import React, { useEffect, useRef, useState } from "react";
+import React, { useState } from "react";
 import Link from "next/link";
-import { PRESET_PATIENTS } from "@/lib/necro-engine/patients";
 import {
-  AutopsyReport,
-  LanguageType,
-  NecroPatient,
-  ResurrectionState,
-  VitalState,
-} from "@/lib/necro-engine/types";
-import {
-  FilePatch,
-  IngestedRepository,
-  RepositoryDiagnosis,
-  SandboxWorkerResult,
-} from "@/lib/necro-engine/schemas";
-import {
-  buildIngestedRepositoryMetadata,
-  createUnifiedDiff,
-  detectProjectLanguageAndFramework,
-  diagnoseLegacyCode,
-  ProjectLanguageProfile,
-  resurrectCode,
-  verifyResurrection,
-} from "@/lib/necro-engine";
-import { ECGMonitor } from "@/components/necro/ECGMonitor";
-import { PatientExhumationBar } from "@/components/necro/PatientExhumationBar";
-import { GitHubIngestPanel } from "@/components/necro/GitHubIngestPanel";
-import { SideBySideDiff } from "@/components/necro/SideBySideDiff";
-import { AutopsyReportCard } from "@/components/necro/AutopsyReportCard";
-import { useToast } from "@/components/ui/Toast";
-import { Skull, Layers, BookOpen, Activity, Terminal } from "lucide-react";
-
-export default function NecroCodeLabPage() {
-  const { toast } = useToast();
-
-  // Mode selection: preset | custom | github
-  const [selectedPatient, setSelectedPatient] = useState<NecroPatient>(
-    PRESET_PATIENTS[0]
-  );
-  const [isCustomMode, setIsCustomMode] = useState(false);
-  const [isGitHubMode, setIsGitHubMode] = useState(false);
-
-  const [customCode, setCustomCode] = useState<string>(
-    PRESET_PATIENTS[0].deadCode
-  );
-  const [customLanguage, setCustomLanguage] = useState<LanguageType>("python");
-
-  // GitHub / ZIP repository state
-  const [ingestedRepo, setIngestedRepo] = useState<IngestedRepository | null>(
-    null
-  );
-  const [languageProfile, setLanguageProfile] =
-    useState<ProjectLanguageProfile | null>(null);
-  const [ingestLoading, setIngestLoading] = useState(false);
-  const [ingestError, setIngestError] = useState<string | null>(null);
-  const [selectedFilePath, setSelectedFilePath] = useState<string>("");
-  const [repoDiagnosis, setRepoDiagnosis] =
-    useState<RepositoryDiagnosis | null>(null);
-  const [repoPatches, setRepoPatches] = useState<FilePatch[]>([]);
-  const [aiStatusLabel, setAiStatusLabel] = useState<string>("");
-  const [verificationLogs, setVerificationLogs] = useState<string[]>([]);
-  const [serverVerificationReport, setServerVerificationReport] =
-    useState<ReturnType<typeof verifyResurrection> | null>(null);
-
-  // Telemetry & Vital State
-  const [vitalState, setVitalState] = useState<VitalState>("DEAD");
-  const [resurrectionState, setResurrectionState] =
-    useState<ResurrectionState>("DIAGNOSED");
-  const [bpm, setBpm] = useState<number>(0);
-  const [isResurrecting, setIsResurrecting] = useState<boolean>(false);
-  const [isResurrected, setIsResurrected] = useState<boolean>(false);
-  const [isApproved, setIsApproved] = useState<boolean>(false);
-  const [isRunningSandbox, setIsRunningSandbox] = useState<boolean>(false);
-  const [sandboxJobResult, setSandboxJobResult] =
-    useState<SandboxWorkerResult | null>(null);
-  const [sandboxDependencyStatus, setSandboxDependencyStatus] = useState<string>("");
-  const [sandboxRuntimeInfo, setSandboxRuntimeInfo] = useState<{
-    language?: string;
-    runtime?: string;
-    framework?: string;
-  } | null>(null);
-  const [sandboxError, setSandboxError] = useState<string | null>(null);
-
-  // Active Single-File Code & Steps (Preset fallback)
-  const [resurrectedCode, setResurrectedCode] = useState<string>("");
-  const [resurrectionSteps, setResurrectionSteps] = useState<string[]>([]);
-  const [repairWarnings, setRepairWarnings] = useState<string[]>([]);
-
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const abortRef = useRef<AbortController | null>(null);
-  const requestSeqRef = useRef<number>(0);
-
-  const cancelPendingRun = () => {
-    requestSeqRef.current += 1;
-    if (timerRef.current) {
-      clearTimeout(timerRef.current);
-      timerRef.current = null;
-    }
-    if (abortRef.current) {
-      abortRef.current.abort();
-      abortRef.current = null;
-    }
-  };
-
-  useEffect(() => {
-    return () => {
-      if (timerRef.current) clearTimeout(timerRef.current);
-      if (abortRef.current) abortRef.current.abort();
-    };
-  }, []);
-
-  const resetLabState = () => {
-    cancelPendingRun();
-    setVitalState("DEAD");
-    setResurrectionState("DIAGNOSED");
-    setBpm(0);
-    setIsResurrected(false);
-    setIsResurrecting(false);
-    setIsApproved(false);
-    setIsRunningSandbox(false);
-    setSandboxJobResult(null);
-    setSandboxDependencyStatus("");
-    setSandboxRuntimeInfo(null);
-    setSandboxError(null);
-    setResurrectedCode("");
-    setResurrectionSteps([]);
-    setRepairWarnings([]);
-    setRepoPatches([]);
-    setServerVerificationReport(null);
-    setVerificationLogs([]);
-    setAiStatusLabel("");
-  };
-
-  const activeRepoFile = React.useMemo(() => {
-    if (!ingestedRepo) return null;
-    return (
-      ingestedRepo.files.find((f) => f.path === selectedFilePath) ??
-      ingestedRepo.files.find(
-        (f) =>
-          f.language === "python" ||
-          f.language === "typescript" ||
-          f.language === "javascript"
-      ) ??
-      ingestedRepo.files[0] ??
-      null
-    );
-  }, [ingestedRepo, selectedFilePath]);
-
-  const activePatch = React.useMemo(() => {
-    if (repoPatches.length === 0) return null;
-    if (isGitHubMode && activeRepoFile) {
-      return repoPatches.find((p) => p.filePath === activeRepoFile.path) ?? null;
-    }
-    return repoPatches[0] ?? null;
-  }, [isGitHubMode, activeRepoFile, repoPatches]);
-
-  const currentDeadCode = isGitHubMode
-    ? activeRepoFile?.content ?? ""
-    : isCustomMode
-    ? customCode
-    : selectedPatient.deadCode;
-
-  const currentLanguage: LanguageType = React.useMemo(() => {
-    if (isGitHubMode) {
-      if (activeRepoFile?.language === "typescript") return "typescript";
-      if (activeRepoFile?.language === "javascript") return "javascript";
-      if (activeRepoFile?.language === "python") return "python";
-      if (languageProfile?.primaryLanguage === "typescript") return "typescript";
-      if (languageProfile?.primaryLanguage === "javascript") return "javascript";
-      return "python";
-    }
-    return isCustomMode ? customLanguage : selectedPatient.language;
-  }, [isGitHubMode, activeRepoFile, languageProfile, isCustomMode, customLanguage, selectedPatient.language]);
-
-  const currentPatientName = isGitHubMode
-    ? ingestedRepo?.name ?? "No Repository Ingested"
-    : isCustomMode
-    ? `Custom ${customLanguage.toUpperCase()} Subject`
-    : selectedPatient.name;
-
-  const displayedResurrectedCode =
-    isGitHubMode || isCustomMode
-      ? activePatch?.proposedContent ?? resurrectedCode
-      : resurrectedCode;
-
-  const displayedSteps = React.useMemo(
-    () =>
-      isGitHubMode || isCustomMode
-        ? activePatch?.stepsApplied ?? resurrectionSteps
-        : resurrectionSteps,
-    [isGitHubMode, isCustomMode, activePatch, resurrectionSteps]
-  );
-
-  const displayedWarnings =
-    isGitHubMode || isCustomMode
-      ? activePatch?.warnings ?? repairWarnings
-      : repairWarnings;
-
-  const displayedUnifiedDiff =
-    (isGitHubMode || isCustomMode) && activePatch
-      ? activePatch.unifiedDiff
-      : isResurrected && displayedResurrectedCode
-      ? createUnifiedDiff(
-          isCustomMode
-            ? `custom.${currentLanguage === "python" ? "py" : currentLanguage === "typescript" ? "ts" : "js"}`
-            : selectedPatient.id,
-          currentDeadCode,
-          displayedResurrectedCode
-        )
-      : "";
-
-  const currentReport: AutopsyReport = React.useMemo(() => {
-    if ((isGitHubMode || isCustomMode) && repoDiagnosis) {
-      const mappedFindings = repoDiagnosis.findings.map((f) => ({
-        line: f.line ?? 1,
-        file: f.file,
-        rule: f.finding,
-        severity: f.severity,
-        origin: f.origin,
-        diagnosis: f.explanation,
-        recommendedRepair: f.recommendedRepair,
-        legacySnippet: f.legacySnippet || f.file,
-        repairedSnippet: f.repairedSnippet || f.recommendedRepair,
-      }));
-
-      const verification =
-        serverVerificationReport ??
-        verifyResurrection(
-          {
-            id: ingestedRepo?.id ?? "custom_subject",
-            language: currentLanguage,
-            deadCode: currentDeadCode,
-            testSuites: [],
-          },
-          isResurrected ? displayedResurrectedCode : currentDeadCode
-        );
-
-      return {
-        patientId: ingestedRepo?.id ?? "custom_subject",
-        patientName: currentPatientName,
-        language: currentLanguage,
-        deceasedYear: ingestedRepo?.lastPushedAt
-          ? new Date(ingestedRepo.lastPushedAt).getFullYear()
-          : 2018,
-        toxicityScore: repoDiagnosis.toxicityScore,
-        fatalErrors: mappedFindings,
-        primaryCauseOfDeath: repoDiagnosis.primaryCauseOfDeath,
-        resurrectedCode: isResurrected ? displayedResurrectedCode : "",
-        resurrectionPlan: displayedSteps,
-        testsPassed: isResurrected ? verification.passedTests : 0,
-        testsTotal: verification.totalTests,
-        heartbeatBpm: isResurrected ? verification.heartbeatBpm : 0,
-        verificationStatus: isResurrected
-          ? verification.verificationStatus
-          : "UNVERIFIED",
-        syntaxValid: isResurrected ? verification.syntaxValid : false,
-        executionResults: verification.executionResults,
-      };
-    }
-
-    const diag = diagnoseLegacyCode(currentDeadCode, currentLanguage);
-    const activeCode = isResurrected ? resurrectedCode : "";
-    const verification = verifyResurrection(
-      {
-        id: isCustomMode ? "custom_subject" : selectedPatient.id,
-        language: currentLanguage,
-        deadCode: currentDeadCode,
-        testSuites: isCustomMode ? [] : selectedPatient.testSuites,
-      },
-      activeCode || currentDeadCode
-    );
-
-    return {
-      patientId: isCustomMode ? "custom_subject" : selectedPatient.id,
-      patientName: currentPatientName,
-      language: currentLanguage,
-      deceasedYear: isCustomMode ? 2016 : selectedPatient.deceasedYear,
-      toxicityScore: diag.toxicityScore,
-      fatalErrors: diag.fatalErrors,
-      primaryCauseOfDeath: diag.primaryCauseOfDeath,
-      resurrectedCode: activeCode,
-      resurrectionPlan: resurrectionSteps,
-      testsPassed: isResurrected ? verification.passedTests : 0,
-      testsTotal: verification.totalTests,
-      heartbeatBpm: isResurrected ? verification.heartbeatBpm : 0,
-      verificationStatus: isResurrected
-        ? verification.verificationStatus
-        : "UNVERIFIED",
-      syntaxValid: isResurrected ? verification.syntaxValid : false,
-      executionResults: verification.executionResults,
-    };
-  }, [
-    currentDeadCode,
-    currentLanguage,
-    currentPatientName,
-    displayedResurrectedCode,
-    displayedSteps,
-    ingestedRepo,
-    isCustomMode,
-    isGitHubMode,
-    isResurrected,
-    repoDiagnosis,
-    resurrectedCode,
-    resurrectionSteps,
-    selectedPatient,
-    serverVerificationReport,
-  ]);
-
-  const handleSelectPatient = (patient: NecroPatient) => {
-    setIsGitHubMode(false);
-    setIsCustomMode(false);
-    setRepoDiagnosis(null);
-    setLanguageProfile(null);
-    setSelectedPatient(patient);
-    resetLabState();
-  };
-
-  const handleToggleCustomMode = () => {
-    setIsGitHubMode(false);
-    const nextCustom = !isCustomMode;
-    setIsCustomMode(nextCustom);
-    setRepoDiagnosis(null);
-    setLanguageProfile(null);
-    if (nextCustom) {
-      setCustomCode(selectedPatient.deadCode);
-      setCustomLanguage(selectedPatient.language);
-    }
-    resetLabState();
-  };
-
-  const handleToggleGitHubMode = () => {
-    const nextGh = !isGitHubMode;
-    setIsGitHubMode(nextGh);
-    setIsCustomMode(false);
-    setIngestError(null);
-    resetLabState();
-  };
-
-  const handleCustomLanguageChange = (lang: LanguageType) => {
-    setCustomLanguage(lang);
-    setRepoDiagnosis(null);
-    resetLabState();
-  };
-
-  const handleCustomCodeChange = (code: string) => {
-    setCustomCode(code);
-    setRepoDiagnosis(null);
-    if (isResurrected || isResurrecting) {
-      resetLabState();
-    }
-  };
-
-  const runServerRepoDiagnosis = async (
-    repo: IngestedRepository,
-    signal: AbortSignal
-  ): Promise<RepositoryDiagnosis> => {
-    const diagRes = await fetch("/api/diagnose", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ repository: repo }),
-      signal,
-    });
-    const diagJson = (await diagRes.json()) as {
-      diagnosis?: RepositoryDiagnosis;
-      error?: string;
-    };
-    if (!diagRes.ok || !diagJson.diagnosis) {
-      throw new Error(diagJson.error || "Diagnosis failed.");
-    }
-    return diagJson.diagnosis;
-  };
-
-  const handleIngestGitHubUrl = async (repoUrl: string) => {
-    resetLabState();
-    setIngestLoading(true);
-    setIngestError(null);
-    setVitalState("DIAGNOSING");
-    setBpm(45);
-
-    const controller = new AbortController();
-    abortRef.current = controller;
-
-    try {
-      const res = await fetch("/api/repo/ingest", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ repoUrl }),
-        signal: controller.signal,
-      });
-      const json = (await res.json()) as {
-        repository?: IngestedRepository;
-        languageProfile?: ProjectLanguageProfile;
-        error?: string;
-      };
-
-      if (!res.ok || !json.repository) {
-        throw new Error(json.error || `Ingestion failed (HTTP ${res.status}).`);
-      }
-
-      const repo = json.repository;
-      setIngestedRepo(repo);
-      const profile =
-        json.languageProfile ?? detectProjectLanguageAndFramework(repo.files);
-      setLanguageProfile(profile);
-
-      const firstSrc =
-        repo.files.find(
-          (f) =>
-            f.language === "python" ||
-            f.language === "typescript" ||
-            f.language === "javascript"
-        ) ?? repo.files[0];
-      setSelectedFilePath(firstSrc?.path ?? "");
-
-      const diag = await runServerRepoDiagnosis(repo, controller.signal);
-      setRepoDiagnosis(diag);
-      setVitalState("DEAD");
-      setResurrectionState("DIAGNOSED");
-      setBpm(0);
-
-      toast({
-        title: `Ingested ${profile.primaryLanguage.toUpperCase()} repository`,
-        description: `${repo.name} (${profile.framework}, ${diag.findings.length} findings)`,
-        type: "success",
-      });
-    } catch (err: unknown) {
-      if (err instanceof Error && err.name === "AbortError") return;
-      const msg =
-        err instanceof Error ? err.message : "Failed to ingest GitHub repository.";
-      setIngestError(msg);
-      setVitalState("DEAD");
-      setBpm(0);
-      toast({ title: "Ingestion failed", description: msg, type: "error" });
-    } finally {
-      setIngestLoading(false);
-    }
-  };
-
-  const handleIngestZipFile = async (file: File) => {
-    resetLabState();
-    setIngestLoading(true);
-    setIngestError(null);
-    setVitalState("DIAGNOSING");
-    setBpm(45);
-
-    const controller = new AbortController();
-    abortRef.current = controller;
-
-    try {
-      const formData = new FormData();
-      formData.append("archive", file);
-
-      const res = await fetch("/api/repo/ingest", {
-        method: "POST",
-        body: formData,
-        signal: controller.signal,
-      });
-      const json = (await res.json()) as {
-        repository?: IngestedRepository;
-        languageProfile?: ProjectLanguageProfile;
-        error?: string;
-      };
-      if (!res.ok || !json.repository) {
-        throw new Error(json.error || `ZIP upload failed (HTTP ${res.status}).`);
-      }
-
-      const repo = json.repository;
-      setIngestedRepo(repo);
-      const profile =
-        json.languageProfile ?? detectProjectLanguageAndFramework(repo.files);
-      setLanguageProfile(profile);
-
-      const firstSrc =
-        repo.files.find(
-          (f) =>
-            f.language === "python" ||
-            f.language === "typescript" ||
-            f.language === "javascript"
-        ) ?? repo.files[0];
-      setSelectedFilePath(firstSrc?.path ?? "");
-
-      const diag = await runServerRepoDiagnosis(repo, controller.signal);
-      setRepoDiagnosis(diag);
-      setVitalState("DEAD");
-      setResurrectionState("DIAGNOSED");
-      setBpm(0);
-
-      toast({
-        title: "ZIP archive ingested",
-        description: `${repo.name} (${profile.primaryLanguage}, ${repo.files.length} files)`,
-        type: "success",
-      });
-    } catch (err: unknown) {
-      if (err instanceof Error && err.name === "AbortError") return;
-      const msg = err instanceof Error ? err.message : "ZIP ingestion failed.";
-      setIngestError(msg);
-      setVitalState("DEAD");
-      setBpm(0);
-      toast({ title: "Archive rejected", description: msg, type: "error" });
-    } finally {
-      setIngestLoading(false);
-    }
-  };
-
-  const handleResurrect = async () => {
-    cancelPendingRun();
-    const runId = requestSeqRef.current;
-
-    setIsResurrecting(true);
-    setIsApproved(false);
-    setSandboxJobResult(null);
-    setSandboxError(null);
-    setVitalState("RESURRECTING");
-    setBpm(45);
-
-    // Server-backed pipeline for GitHub/ZIP repositories OR Custom code (Python, JS, TS)
-    if (isGitHubMode || isCustomMode) {
-      const controller = new AbortController();
-      abortRef.current = controller;
-
-      try {
-        const customExt =
-          customLanguage === "typescript"
-            ? "index.ts"
-            : customLanguage === "javascript"
-            ? "index.js"
-            : "main.py";
-
-        const targetRepo: IngestedRepository =
-          isGitHubMode && ingestedRepo
-            ? ingestedRepo
-            : buildIngestedRepositoryMetadata({
-                id: `custom_${customLanguage}_subject`,
-                source: "custom",
-                name: customExt,
-                files: [
-                  {
-                    path: customExt,
-                    content: customCode,
-                    sizeBytes: customCode.length,
-                    language: customLanguage,
-                    isTestFile: false,
-                    isDependencyManifest: false,
-                  },
-                ],
-                totalBytes: customCode.length,
-                truncated: false,
-                skippedCount: 0,
-                warnings: [],
-              });
-
-        const res = await fetch("/api/resurrect", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            repository: targetRepo,
-            diagnosis: isGitHubMode ? repoDiagnosis ?? undefined : undefined,
-            useAi: true,
-          }),
-          signal: controller.signal,
-        });
-
-        const resJson = (await res.json()) as {
-          diagnosis?: RepositoryDiagnosis;
-          resurrection?: {
-            aiStatus: string;
-            aiModel?: string;
-            aiError?: string;
-            patches: FilePatch[];
-            aiFindings: RepositoryDiagnosis["findings"];
-          };
-          error?: string;
-        };
-
-        if (!res.ok || !resJson.resurrection || !resJson.diagnosis) {
-          throw new Error(resJson.error || "Repair pipeline failed.");
-        }
-
-        if (requestSeqRef.current !== runId) return;
-
-        const combinedDiagnosis: RepositoryDiagnosis = {
-          ...resJson.diagnosis,
-          findings: [
-            ...resJson.diagnosis.findings,
-            ...(resJson.resurrection.aiFindings ?? []),
-          ],
-        };
-        setRepoDiagnosis(combinedDiagnosis);
-        setRepoPatches(resJson.resurrection.patches);
-        if (combinedDiagnosis.languageProfile) {
-          setLanguageProfile(combinedDiagnosis.languageProfile);
-        }
-
-        const aiTag =
-          resJson.resurrection.aiStatus === "live_gemini"
-            ? `Gemini (${resJson.resurrection.aiModel || "live"}) + Deterministic`
-            : "Deterministic AST/Compiler (Gemini Fallback)";
-        setAiStatusLabel(aiTag);
-
-        const patchedFiles = targetRepo.files.map((orig) => {
-          const patch = resJson.resurrection!.patches.find(
-            (p) => p.filePath === orig.path
-          );
-          return {
-            path: orig.path,
-            content: patch ? patch.proposedContent : orig.content,
-            isTestFile: orig.isTestFile,
-          };
-        });
-
-        const verifyRes = await fetch("/api/verify", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            repositoryName: targetRepo.name,
-            files: patchedFiles,
-            timeoutMs: 10_000,
-          }),
-          signal: controller.signal,
-        });
-        const verifyJson = (await verifyRes.json()) as {
-          report?: ReturnType<typeof verifyResurrection>;
-          error?: string;
-        };
-
-        if (!verifyRes.ok || !verifyJson.report) {
-          throw new Error(verifyJson.error || "Verification preparation failed.");
-        }
-
-        if (requestSeqRef.current !== runId) return;
-
-        setServerVerificationReport(verifyJson.report);
-        setVerificationLogs(verifyJson.report.logs);
-        setIsResurrecting(false);
-        setIsResurrected(true);
-        setVitalState(verifyJson.report.vitalState);
-        setResurrectionState(
-          verifyJson.report.vitalState === "SYNTAX_VERIFIED"
-            ? "SYNTAX_VERIFIED"
-            : "FAILED"
-        );
-        setBpm(verifyJson.report.heartbeatBpm);
-
-        toast({
-          title:
-            verifyJson.report.vitalState === "SYNTAX_VERIFIED"
-              ? "Syntax/type check passed (sandbox pending)"
-              : "Syntax/compiler check failed",
-          description: `${resJson.resurrection.patches.filter((p) => p.status === "valid").length} file(s) patched via ${aiTag}.`,
-          type:
-            verifyJson.report.vitalState === "SYNTAX_VERIFIED"
-              ? "success"
-              : "error",
-        });
-      } catch (err: unknown) {
-        if (err instanceof Error && err.name === "AbortError") return;
-        const msg = err instanceof Error ? err.message : "Repair request failed.";
-        setIsResurrecting(false);
-        setVitalState("FAILED");
-        setResurrectionState("FAILED");
-        setBpm(0);
-        setRepairWarnings([msg]);
-        toast({ title: "Repair failed", description: msg, type: "error" });
-      }
-      return;
-    }
-
-    // Preset synchronous reference path
-    timerRef.current = setTimeout(() => {
-      if (requestSeqRef.current !== runId) return;
-
-      const result = resurrectCode(
-        currentDeadCode,
-        currentLanguage,
-        selectedPatient.id
-      );
-
-      const verification = verifyResurrection(
-        {
-          id: selectedPatient.id,
-          language: currentLanguage,
-          deadCode: currentDeadCode,
-          testSuites: selectedPatient.testSuites,
-        },
-        result.resurrectedCode
-      );
-
-      setResurrectedCode(result.resurrectedCode);
-      setResurrectionSteps(result.stepsApplied);
-      setRepairWarnings(result.warnings);
-      setVerificationLogs(verification.logs);
-      setIsResurrecting(false);
-      setIsResurrected(true);
-      setVitalState(verification.vitalState);
-      setResurrectionState(
-        verification.vitalState === "SYNTAX_VERIFIED"
-          ? "SYNTAX_VERIFIED"
-          : "REPAIR_GENERATED"
-      );
-      setBpm(verification.heartbeatBpm);
-      timerRef.current = null;
-    }, 300);
-  };
-
-  const handleRunSandboxTests = async () => {
-    if (isRunningSandbox) return;
-    setIsRunningSandbox(true);
-    setSandboxError(null);
-    setResurrectionState("TESTS_RUNNING");
-    setVitalState("TESTS_RUNNING");
-    setBpm(45);
-
-    try {
-      const fallbackFileName =
-        currentLanguage === "typescript"
-          ? "index.ts"
-          : currentLanguage === "javascript"
-          ? "index.js"
-          : "main.py";
-
-      const filesToRun =
-        isGitHubMode && ingestedRepo
-          ? ingestedRepo.files.map((f) => {
-              const patch = repoPatches.find((p) => p.filePath === f.path);
-              return {
-                path: f.path,
-                content: patch ? patch.proposedContent : f.content,
-              };
-            })
-          : [
-              {
-                path: fallbackFileName,
-                content: displayedResurrectedCode || currentDeadCode,
-              },
-            ];
-
-      const res = await fetch("/api/sandbox/execute", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          repositoryName: currentPatientName,
-          language: isGitHubMode ? undefined : currentLanguage,
-          files: filesToRun,
-          timeoutMs: 8000,
-          repairApproved: isApproved,
-        }),
-      });
-
-      const json = (await res.json()) as {
-        resurrectionState?: ResurrectionState;
-        language?: string;
-        runtime?: string;
-        framework?: string;
-        dependencyPolicy?: { status?: string; reason?: string };
-        result?: SandboxWorkerResult | null;
-        error?: string | null;
-      };
-
-      const nextState = json.resurrectionState ?? "VERIFICATION_BLOCKED";
-      setResurrectionState(nextState);
-      setSandboxJobResult(json.result ?? null);
-      setSandboxError(json.error ?? null);
-      setSandboxDependencyStatus(
-        json.dependencyPolicy?.status
-          ? `${json.dependencyPolicy.status}: ${json.dependencyPolicy.reason ?? ""}`
-          : ""
-      );
-      setSandboxRuntimeInfo({
-        language: json.language,
-        runtime: json.runtime,
-        framework: json.framework,
-      });
-
-      if (nextState === "RESURRECTED") {
-        setVitalState("ALIVE");
-        setBpm(78);
-      } else if (nextState === "PARTIALLY_RESURRECTED") {
-        setVitalState("PARTIAL");
-        setBpm(58);
-      } else if (nextState === "SYNTAX_VERIFIED") {
-        setVitalState("SYNTAX_VERIFIED");
-        setBpm(64);
-      } else if (nextState === "VERIFICATION_BLOCKED") {
-        setVitalState("BLOCKED");
-        setBpm(0);
-      } else {
-        setVitalState("FAILED");
-        setBpm(0);
-      }
-
-      if (json.result) {
-        setVerificationLogs((prev) => [
-          ...prev,
-          `[SANDBOX:${json.result!.driver}/${json.runtime || currentLanguage}] status=${json.result!.status} passed=${json.result!.passedTests}/${json.result!.totalTests} duration=${json.result!.durationMs}ms exitCode=${json.result!.exitCode}`,
-        ]);
-      } else if (json.error) {
-        setVerificationLogs((prev) => [...prev, `[SANDBOX BLOCKED] ${json.error}`]);
-      }
-
-      toast({
-        title: `Sandbox State: ${nextState}`,
-        description:
-          json.error ||
-          (json.result
-            ? `${json.result.passedTests}/${json.result.totalTests} tests passed (${json.result.status})`
-            : "Sandbox execution completed."),
-        type:
-          nextState === "RESURRECTED" || nextState === "SYNTAX_VERIFIED"
-            ? "success"
-            : "error",
-      });
-    } catch (err: unknown) {
-      const msg =
-        err instanceof Error ? err.message : "Sandbox execution request failed.";
-      setResurrectionState("VERIFICATION_BLOCKED");
-      setVitalState("BLOCKED");
-      setBpm(0);
-      setSandboxError(msg);
-      toast({ title: "Sandbox blocked", description: msg, type: "error" });
-    } finally {
-      setIsRunningSandbox(false);
-    }
-  };
+  ArrowRight,
+  CheckCircle2,
+  Code2,
+  Cpu,
+  FileDiff,
+  FolderGit2,
+  Lock,
+  Play,
+  ShieldCheck,
+  Skull,
+  Sparkles,
+} from "lucide-react";
+
+type PreviewLang = "python" | "javascript" | "typescript";
+
+const PREVIEW_EXAMPLES: Record<
+  PreviewLang,
+  {
+    label: string;
+    file: string;
+    before: string;
+    after: string;
+    badge: string;
+  }
+> = {
+  python: {
+    label: "Python 2 -> 3.12",
+    file: "archiver.py",
+    before: `import urllib2
+print "Fetching archive..."
+for k, v in items.iteritems():
+    process(k, v)`,
+    after: `import urllib.request
+print("Fetching archive...")
+for k, v in items.items():
+    process(k, v)`,
+    badge: "3/3 tests passed • Offline sandbox",
+  },
+  javascript: {
+    label: "Legacy Node -> Node 20",
+    file: "webhook.js",
+    before: `const buf = new Buffer(payload);
+const request = require("request");
+fs.exists(cfg, (ok) => {
+  if (ok) send(buf);
+});`,
+    after: `const buf = Buffer.from(payload);
+// Uses native fetch (Node 20)
+if (fs.existsSync(cfg)) {
+  await fetch(endpoint, { method: "POST", body: buf });
+}`,
+    badge: "Syntax OK • Unsafe APIs fixed",
+  },
+  typescript: {
+    label: "Broken TS -> TypeScript 5.9",
+    file: "handler.ts",
+    before: `export function parseUser(data) {
+  return data.email.trim();
+}`,
+    after: `export function parseUser(data: { email: string }): string {
+  return data.email.trim();
+}`,
+    badge: "tsc --noEmit passed • Strict types OK",
+  },
+};
+
+export default function LandingPage() {
+  const [previewLang, setPreviewLang] = useState<PreviewLang>("python");
+  const example = PREVIEW_EXAMPLES[previewLang];
 
   return (
     <div className="min-h-screen bg-[#05070d] text-slate-100 selection:bg-purple-600 selection:text-white">
+      {/* Subtle Ambient Background Glow */}
+      <div
+        aria-hidden="true"
+        className="pointer-events-none fixed inset-x-0 top-0 h-[520px] bg-[radial-gradient(ellipse_at_top,_rgba(139,92,246,0.16),_rgba(6,182,212,0.06)_45%,_transparent_75%)]"
+      />
+
+      {/* Sticky Top Header */}
       <header className="sticky top-0 z-50 border-b border-slate-800/80 bg-[#070b14]/90 backdrop-blur-md px-4 sm:px-6 py-3">
-        <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
-            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-purple-950/80 border border-purple-700/60 text-purple-300 shadow-md shadow-purple-950/50">
-              <Skull className="h-5 w-5" />
+        <div className="max-w-6xl mx-auto flex flex-wrap items-center justify-between gap-3">
+          <Link href="/" className="flex items-center gap-2.5">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-purple-950/80 border border-purple-700/60 text-purple-300">
+              <Skull className="h-4 w-4" />
             </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="font-mono text-base font-bold tracking-tight text-slate-100">
-                  NECROCODE
-                </span>
-                <span className="rounded bg-purple-500/20 px-2 py-0.5 text-[10px] font-mono text-purple-300 border border-purple-500/40">
-                  PYTHON • JS • TS
-                </span>
-              </div>
-              <p className="text-[10px] font-mono text-slate-400">
-                Multi-Language Software Autopsy &amp; Resurrection Lab
-              </p>
-            </div>
-          </div>
+            <span className="font-mono text-base font-bold tracking-tight text-white">
+              NECROCODE
+            </span>
+          </Link>
 
           <nav
-            className="flex items-center gap-2 text-xs font-mono"
-            aria-label="Primary navigation"
+            className="flex items-center gap-2 sm:gap-3 text-xs font-medium"
+            aria-label="Main navigation"
           >
             <Link
-              href="/dashboard"
-              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-800 bg-slate-900/60 px-3 py-1.5 text-slate-300 hover:border-slate-700 hover:text-white transition"
+              href="/lab"
+              className="px-2.5 py-1.5 text-slate-300 hover:text-white transition-colors"
             >
-              <Activity className="h-3.5 w-3.5 text-cyan-400" />
-              Telemetry
+              Workspace
+            </Link>
+            <Link
+              href="/dashboard"
+              className="px-2.5 py-1.5 text-slate-300 hover:text-white transition-colors"
+            >
+              System Status
             </Link>
             <Link
               href="/docs"
-              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-800 bg-slate-900/60 px-3 py-1.5 text-slate-300 hover:border-slate-700 hover:text-white transition"
+              className="px-2.5 py-1.5 text-slate-300 hover:text-white transition-colors"
             >
-              <BookOpen className="h-3.5 w-3.5 text-purple-400" />
-              Docs &amp; API
+              Guide
+            </Link>
+            <Link
+              href="/lab"
+              className="inline-flex items-center gap-1.5 rounded-lg bg-purple-600 hover:bg-purple-500 px-3.5 py-1.5 text-xs font-semibold text-white transition-colors shadow-sm shadow-purple-950"
+            >
+              Try It Free
+              <ArrowRight className="w-3.5 h-3.5" />
             </Link>
           </nav>
         </div>
       </header>
 
-      <main className="max-w-7xl mx-auto px-4 py-8 space-y-8">
-        <section className="relative overflow-hidden rounded-2xl border border-slate-800 bg-gradient-to-b from-[#090e1a] to-[#060911] p-6 md:p-8 shadow-2xl">
-          <div className="max-w-3xl space-y-3">
-            <h1 className="text-2xl md:text-4xl font-extrabold tracking-tight text-white font-mono">
-              SOFTWARE AUTOPSY &amp; RESURRECTION LAB
+      <main className="relative max-w-6xl mx-auto px-4 sm:px-6">
+        {/* HERO SECTION */}
+        <section className="py-12 md:py-16 grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-10 items-center">
+          <div className="lg:col-span-6 space-y-5">
+            <div className="inline-flex items-center gap-2 rounded-full border border-purple-500/30 bg-purple-950/40 px-3 py-1 text-xs font-medium text-purple-200">
+              <Cpu className="w-3.5 h-3.5 text-purple-400" />
+              Python 3.12 • Node.js 20 • TypeScript 5.9
+            </div>
+
+            <h1 className="text-3xl sm:text-4xl lg:text-5xl font-bold tracking-tight text-white leading-[1.12]">
+              Fix Broken Legacy Code.{" "}
+              <span className="text-transparent bg-clip-text bg-gradient-to-r from-purple-400 via-cyan-300 to-emerald-400">
+                Prove It With Real Tests.
+              </span>
             </h1>
-            <p className="text-sm md:text-base text-slate-300 leading-relaxed">
-              Ingest Python, JavaScript, or TypeScript repositories, diagnose syntax, compiler, and dependency rot, synthesize validated patches, and run isolated verification inside dedicated runtime workers.
+
+            <p className="text-base text-slate-300 leading-relaxed max-w-xl">
+              Load a public GitHub repo or paste outdated code. NecroCode finds what broke, repairs it safely, and tests every fix inside an offline sandbox.
+            </p>
+
+            <div className="flex flex-wrap items-center gap-3 pt-1">
+              <Link
+                href="/lab"
+                className="inline-flex items-center gap-2 rounded-lg bg-purple-600 hover:bg-purple-500 px-5 py-2.5 text-sm font-semibold text-white transition-colors shadow-lg shadow-purple-950/50"
+              >
+                <Play className="w-4 h-4 fill-current" />
+                Open Live Workspace
+              </Link>
+              <a
+                href="#how-it-works"
+                className="inline-flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-900/70 hover:border-slate-500 px-4 py-2.5 text-sm font-medium text-slate-200 transition-colors"
+              >
+                See How It Works
+              </a>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-x-5 gap-y-2 pt-2 text-xs text-slate-400">
+              <span className="inline-flex items-center gap-1.5">
+                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                No signup required
+              </span>
+              <span className="inline-flex items-center gap-1.5">
+                <Lock className="w-3.5 h-3.5 text-cyan-400" />
+                Tests run offline
+              </span>
+              <span className="inline-flex items-center gap-1.5">
+                <ShieldCheck className="w-3.5 h-3.5 text-purple-400" />
+                Zero fake test passes
+              </span>
+            </div>
+          </div>
+
+          {/* RIGHT HERO: Interactive Visual Code Card */}
+          <div className="lg:col-span-6">
+            <div className="rounded-2xl border border-slate-800 bg-[#070b14] shadow-2xl overflow-hidden">
+              <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-2.5 border-b border-slate-800 bg-[#0b101d]">
+                <div
+                  role="tablist"
+                  aria-label="Preview language"
+                  className="inline-flex items-center gap-1"
+                >
+                  {(["python", "javascript", "typescript"] as const).map(
+                    (lang) => {
+                      const active = previewLang === lang;
+                      return (
+                        <button
+                          key={lang}
+                          type="button"
+                          role="tab"
+                          aria-selected={active}
+                          onClick={() => setPreviewLang(lang)}
+                          className={`px-2.5 py-1 rounded-md text-xs font-medium capitalize cursor-pointer transition-colors ${
+                            active
+                              ? "bg-purple-600/30 text-purple-100 border border-purple-500/50"
+                              : "text-slate-400 hover:text-slate-200 border border-transparent"
+                          }`}
+                        >
+                          {lang}
+                        </button>
+                      );
+                    }
+                  )}
+                </div>
+                <span className="font-mono text-[11px] text-slate-400">
+                  {example.file}
+                </span>
+              </div>
+
+              <div className="p-4 space-y-3 font-mono text-xs">
+                <div className="rounded-lg border border-rose-500/20 bg-rose-950/20 p-3">
+                  <div className="text-[10px] font-sans font-semibold uppercase tracking-wider text-rose-300 mb-1.5">
+                    Before ({example.label.split("->")[0].trim()})
+                  </div>
+                  <pre className="text-rose-200/90 overflow-x-auto leading-relaxed">
+                    <code>{example.before}</code>
+                  </pre>
+                </div>
+
+                <div className="rounded-lg border border-emerald-500/25 bg-emerald-950/20 p-3">
+                  <div className="text-[10px] font-sans font-semibold uppercase tracking-wider text-emerald-300 mb-1.5">
+                    After (Repaired)
+                  </div>
+                  <pre className="text-emerald-100 overflow-x-auto leading-relaxed">
+                    <code>{example.after}</code>
+                  </pre>
+                </div>
+              </div>
+
+              <div className="px-4 py-2.5 border-t border-slate-800 bg-[#0b101d] flex flex-wrap items-center justify-between gap-2 text-xs">
+                <span className="inline-flex items-center gap-1.5 text-emerald-300 font-medium">
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                  {example.badge}
+                </span>
+                <Link
+                  href="/lab"
+                  className="text-cyan-300 hover:text-cyan-200 font-medium inline-flex items-center gap-1"
+                >
+                  Try it yourself
+                  <ArrowRight className="w-3 h-3" />
+                </Link>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* PLATFORM QUALITIES: 4 Smart Highlights */}
+        <section aria-label="Platform highlights" className="py-10 border-t border-slate-800/70">
+          <div className="mb-6 space-y-1">
+            <h2 className="text-xl sm:text-2xl font-bold text-white">
+              Why Teams Trust NecroCode
+            </h2>
+            <p className="text-sm text-slate-400">
+              Built for real code verification—not blind AI guesses.
             </p>
           </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            {[
+              {
+                icon: Code2,
+                color: "text-cyan-400",
+                title: "Finds Real Errors First",
+                desc: "Scans syntax, types, and outdated packages before editing a single line.",
+              },
+              {
+                icon: Sparkles,
+                color: "text-purple-400",
+                title: "AI + Built-in Rules",
+                desc: "Pairs Gemini AI with deterministic AST fixes so repairs work offline too.",
+              },
+              {
+                icon: ShieldCheck,
+                color: "text-emerald-400",
+                title: "Offline Test Sandbox",
+                desc: "Runs untrusted code with network disabled and zero access to host secrets.",
+              },
+              {
+                icon: FileDiff,
+                color: "text-amber-400",
+                title: "100% Honest Results",
+                desc: "Shows real pass/fail telemetry. Missing tests never count as passing.",
+              },
+            ].map((item) => {
+              const Icon = item.icon;
+              return (
+                <div
+                  key={item.title}
+                  className="rounded-xl border border-slate-800 bg-[#070b14] p-4 space-y-2"
+                >
+                  <Icon className={`w-5 h-5 ${item.color}`} />
+                  <h3 className="text-sm font-semibold text-white">
+                    {item.title}
+                  </h3>
+                  <p className="text-xs text-slate-400 leading-relaxed">
+                    {item.desc}
+                  </p>
+                </div>
+              );
+            })}
+          </div>
         </section>
 
-        <section className="space-y-4">
-          <PatientExhumationBar
-            selectedPatientId={selectedPatient.id}
-            onSelectPatient={handleSelectPatient}
-            isCustomMode={isCustomMode}
-            onToggleCustomMode={handleToggleCustomMode}
-            customLanguage={customLanguage}
-            onCustomLanguageChange={handleCustomLanguageChange}
-            isGitHubMode={isGitHubMode}
-            onToggleGitHubMode={handleToggleGitHubMode}
-          />
+        {/* HOW IT WORKS: 3 Clean Steps */}
+        <section
+          id="how-it-works"
+          aria-label="How it works"
+          className="py-10 border-t border-slate-800/70"
+        >
+          <div className="mb-6 space-y-1">
+            <h2 className="text-xl sm:text-2xl font-bold text-white">
+              How It Works in 3 Steps
+            </h2>
+            <p className="text-sm text-slate-400">
+              From broken legacy code to verified tests in under a minute.
+            </p>
+          </div>
 
-          {isGitHubMode && (
-            <GitHubIngestPanel
-              repository={ingestedRepo}
-              languageProfile={languageProfile}
-              isLoading={ingestLoading}
-              error={ingestError}
-              selectedFilePath={activeRepoFile?.path ?? ""}
-              onSelectFilePath={setSelectedFilePath}
-              onIngestGitHubUrl={handleIngestGitHubUrl}
-              onIngestZipFile={handleIngestZipFile}
-            />
-          )}
-        </section>
-
-        <section className="space-y-3">
-          <ECGMonitor
-            vitalState={vitalState}
-            bpm={bpm}
-            patientName={currentPatientName}
-            resurrectionState={resurrectionState}
-          />
-        </section>
-
-        <section className="space-y-3">
-          <SideBySideDiff
-            deadCode={currentDeadCode}
-            resurrectedCode={displayedResurrectedCode}
-            unifiedDiff={displayedUnifiedDiff}
-            activeFilePath={isGitHubMode ? activeRepoFile?.path : undefined}
-            language={currentLanguage}
-            isResurrecting={isResurrecting}
-            isResurrected={isResurrected}
-            onResurrect={handleResurrect}
-            resurrectionSteps={displayedSteps}
-            warnings={displayedWarnings}
-            verificationStatus={
-              sandboxJobResult
-                ? sandboxJobResult.status === "PASSED"
-                  ? "PASSED"
-                  : sandboxJobResult.status === "PARTIAL"
-                  ? "PARTIAL"
-                  : sandboxJobResult.status === "NO_TESTS_FOUND"
-                  ? "NO_TESTS_FOUND"
-                  : sandboxJobResult.status === "VERIFICATION_BLOCKED"
-                  ? "VERIFICATION_BLOCKED"
-                  : "FAILED"
-                : sandboxError
-                ? "VERIFICATION_BLOCKED"
-                : currentReport.verificationStatus
-            }
-            repairSourceLabel={
-              isGitHubMode || isCustomMode
-                ? aiStatusLabel || "AST / Compiler + Gemini"
-                : "Preset Golden Reference"
-            }
-            isCustomMode={isCustomMode && !isGitHubMode}
-            onCustomCodeChange={handleCustomCodeChange}
-            isApproved={isApproved}
-            onApproveChanges={() => {
-              setIsApproved(true);
-              if (
-                resurrectionState === "REPAIR_GENERATED" ||
-                resurrectionState === "SYNTAX_VERIFIED"
-              ) {
-                setResurrectionState("REPAIR_APPROVED");
-              }
-            }}
-            onResetApproval={() => setIsApproved(false)}
-            canRunSandbox={
-              currentLanguage === "python" ||
-              currentLanguage === "javascript" ||
-              currentLanguage === "typescript"
-            }
-            isRunningSandbox={isRunningSandbox}
-            onRunSandboxTests={handleRunSandboxTests}
-          />
-        </section>
-
-        {(sandboxJobResult || sandboxError || (repoDiagnosis?.tsDiagnostics?.length ?? 0) > 0) && (
-          <section className="rounded-xl border border-slate-800 bg-[#070b14] p-4 font-mono text-xs space-y-3">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <span className="font-bold uppercase tracking-wider text-slate-200">
-                Isolated Sandbox Telemetry ({resurrectionState})
-              </span>
-              {sandboxJobResult && (
-                <span className="text-slate-400">
-                  Runtime: {sandboxRuntimeInfo?.runtime || currentLanguage} • Driver:{" "}
-                  {sandboxJobResult.driver} • Duration: {sandboxJobResult.durationMs}ms • Exit:{" "}
-                  {sandboxJobResult.exitCode}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {[
+              {
+                step: "01",
+                title: "Add Your Code",
+                desc: "Pick a sample project, paste code, or import any public GitHub repo or .zip file.",
+              },
+              {
+                step: "02",
+                title: "Review Every Fix",
+                desc: "Inspect the side-by-side diff and approve the exact changes before execution.",
+              },
+              {
+                step: "03",
+                title: "Run Safe Tests",
+                desc: "Execute pytest, unittest, node:test, or tsc checks in a locked-down sandbox.",
+              },
+            ].map((item) => (
+              <div
+                key={item.step}
+                className="rounded-xl border border-slate-800 bg-[#070b14] p-5 space-y-2"
+              >
+                <span className="font-mono text-xs font-bold text-purple-400">
+                  STEP {item.step}
                 </span>
-              )}
-            </div>
-
-            {sandboxDependencyStatus && (
-              <div className="rounded border border-slate-800 bg-slate-900/60 px-3 py-2 text-[11px] text-slate-300">
-                Dependency Policy: {sandboxDependencyStatus}
+                <h3 className="text-base font-semibold text-white">
+                  {item.title}
+                </h3>
+                <p className="text-xs text-slate-400 leading-relaxed">
+                  {item.desc}
+                </p>
               </div>
-            )}
-
-            {sandboxError && (
-              <div className="rounded border border-rose-800/70 bg-rose-950/30 p-3 text-rose-300">
-                {sandboxError}
-              </div>
-            )}
-
-            {(sandboxJobResult?.tsDiagnostics?.length ||
-              repoDiagnosis?.tsDiagnostics?.length) ? (
-              <div className="rounded border border-amber-900/60 bg-amber-950/20 p-3 space-y-1">
-                <div className="font-bold text-amber-300">
-                  TypeScript / Compiler Diagnostics
-                </div>
-                {(sandboxJobResult?.tsDiagnostics?.length
-                  ? sandboxJobResult.tsDiagnostics
-                  : repoDiagnosis?.tsDiagnostics ?? []
-                ).map((d, i) => (
-                  <div key={i} className="text-[11px] text-amber-200">
-                    {d.file}:{d.line}:{d.column} [{d.code}] {d.message}
-                  </div>
-                ))}
-              </div>
-            ) : null}
-
-            {sandboxJobResult && (
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center">
-                <div className="rounded bg-slate-900/70 border border-slate-800 p-2">
-                  <div className="text-[10px] text-slate-400">TOTAL</div>
-                  <div className="text-base font-bold text-slate-100">
-                    {sandboxJobResult.totalTests}
-                  </div>
-                </div>
-                <div className="rounded bg-slate-900/70 border border-slate-800 p-2">
-                  <div className="text-[10px] text-slate-400">PASSED</div>
-                  <div className="text-base font-bold text-emerald-400">
-                    {sandboxJobResult.passedTests}
-                  </div>
-                </div>
-                <div className="rounded bg-slate-900/70 border border-slate-800 p-2">
-                  <div className="text-[10px] text-slate-400">FAILED</div>
-                  <div className="text-base font-bold text-rose-400">
-                    {sandboxJobResult.failedTests}
-                  </div>
-                </div>
-                <div className="rounded bg-slate-900/70 border border-slate-800 p-2">
-                  <div className="text-[10px] text-slate-400">SKIPPED</div>
-                  <div className="text-base font-bold text-amber-300">
-                    {sandboxJobResult.skippedTests}
-                  </div>
-                </div>
-              </div>
-            )}
-          </section>
-        )}
-
-        {verificationLogs.length > 0 && (
-          <section className="rounded-xl border border-slate-800 bg-[#070b14] p-4 font-mono text-xs space-y-2">
-            <div className="flex items-center gap-2 text-slate-300 font-bold uppercase tracking-wider">
-              <Terminal className="h-3.5 w-3.5 text-cyan-400" />
-              Structured Verification Logs
-            </div>
-            <div className="rounded-lg bg-[#05070d] border border-slate-800/80 p-3 space-y-1 text-slate-300 max-h-48 overflow-y-auto">
-              {verificationLogs.map((log, i) => (
-                <div key={i}>{log}</div>
-              ))}
-            </div>
-          </section>
-        )}
-
-        <section className="space-y-3">
-          <AutopsyReportCard
-            report={currentReport}
-            isResurrected={isResurrected}
-            isPresetDemo={!isCustomMode && !isGitHubMode}
-          />
+            ))}
+          </div>
         </section>
 
-        <section className="rounded-xl border border-slate-800 bg-[#070b14] p-6 space-y-4">
-          <div className="flex items-center gap-2">
-            <Layers className="h-5 w-5 text-purple-400" />
-            <h3 className="font-mono text-base font-bold text-slate-100">
-              Kiro Spec-Driven Architecture (.kiro)
-            </h3>
+        {/* DIRECT WORKSPACE SHORTCUTS */}
+        <section aria-label="Try live examples" className="py-10 border-t border-slate-800/70">
+          <div className="mb-6 space-y-1">
+            <h2 className="text-xl sm:text-2xl font-bold text-white">
+              Jump Right In
+            </h2>
+            <p className="text-sm text-slate-400">
+              Open a built-in example or load your own repository right away.
+            </p>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 font-mono text-xs pt-1">
-            <div className="rounded-lg border border-slate-800/80 bg-slate-900/40 p-4 space-y-2">
-              <span className="text-purple-400 font-bold block">
-                1. .kiro/specs/requirements.md
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <Link
+              href="/lab?sample=patient_py2_archiver"
+              className="group rounded-xl border border-slate-800 bg-[#070b14] hover:border-purple-500/60 p-4 flex flex-col justify-between gap-3 transition-colors"
+            >
+              <div className="space-y-1.5">
+                <span className="inline-block px-2 py-0.5 rounded bg-sky-950/60 text-sky-300 border border-sky-700/40 text-[11px] font-medium">
+                  Python 2 -&gt; 3.12
+                </span>
+                <h3 className="text-sm font-semibold text-white">
+                  Legacy Python CLI
+                </h3>
+                <p className="text-xs text-slate-400">
+                  Fixes old print statements, urllib2 imports, and dict methods.
+                </p>
+              </div>
+              <span className="text-xs font-medium text-purple-300 group-hover:text-purple-200 inline-flex items-center gap-1">
+                Open sample <ArrowRight className="w-3.5 h-3.5" />
               </span>
-              <p className="text-slate-400 font-sans text-xs">
-                Defines ingestion, Python/JS/TS diagnosis, validated repairs, and isolated sandbox verification rules.
-              </p>
-            </div>
-            <div className="rounded-lg border border-slate-800/80 bg-slate-900/40 p-4 space-y-2">
-              <span className="text-cyan-400 font-bold block">
-                2. .kiro/steering/tech.md
+            </Link>
+
+            <Link
+              href="/lab?sample=patient_node_webhook"
+              className="group rounded-xl border border-slate-800 bg-[#070b14] hover:border-purple-500/60 p-4 flex flex-col justify-between gap-3 transition-colors"
+            >
+              <div className="space-y-1.5">
+                <span className="inline-block px-2 py-0.5 rounded bg-amber-950/60 text-amber-300 border border-amber-700/40 text-[11px] font-medium">
+                  Node.js 6 -&gt; 20
+                </span>
+                <h3 className="text-sm font-semibold text-white">
+                  Outdated Node Webhook
+                </h3>
+                <p className="text-xs text-slate-400">
+                  Replaces unsafe Buffer constructors and deprecated packages.
+                </p>
+              </div>
+              <span className="text-xs font-medium text-purple-300 group-hover:text-purple-200 inline-flex items-center gap-1">
+                Open sample <ArrowRight className="w-3.5 h-3.5" />
               </span>
-              <p className="text-slate-400 font-sans text-xs">
-                Enforces Zod schemas, strict TypeScript, lifecycle-script bans, and isolated Python &amp; Node workers.
-              </p>
-            </div>
-            <div className="rounded-lg border border-slate-800/80 bg-slate-900/40 p-4 space-y-2">
-              <span className="text-emerald-400 font-bold block">
-                3. .kiro/hooks/validate.json
+            </Link>
+
+            <Link
+              href="/lab?mode=github"
+              className="group rounded-xl border border-slate-800 bg-[#070b14] hover:border-cyan-500/60 p-4 flex flex-col justify-between gap-3 transition-colors"
+            >
+              <div className="space-y-1.5">
+                <span className="inline-block px-2 py-0.5 rounded bg-cyan-950/60 text-cyan-300 border border-cyan-700/40 text-[11px] font-medium">
+                  GitHub / .ZIP
+                </span>
+                <h3 className="text-sm font-semibold text-white inline-flex items-center gap-1.5">
+                  <FolderGit2 className="w-4 h-4 text-cyan-400" />
+                  Your Own Repository
+                </h3>
+                <p className="text-xs text-slate-400">
+                  Analyze and test any public Python, JavaScript, or TypeScript project.
+                </p>
+              </div>
+              <span className="text-xs font-medium text-cyan-300 group-hover:text-cyan-200 inline-flex items-center gap-1">
+                Load repository <ArrowRight className="w-3.5 h-3.5" />
               </span>
-              <p className="text-slate-400 font-sans text-xs">
-                Post-save hook running Vitest verification across Python, JavaScript, TypeScript, and security isolation suites.
-              </p>
-            </div>
+            </Link>
           </div>
+        </section>
+
+        {/* FINAL CTA */}
+        <section className="my-10 rounded-2xl border border-purple-500/30 bg-gradient-to-r from-[#0c1122] via-[#090d1a] to-[#081520] p-6 sm:p-8 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="space-y-1">
+            <h2 className="text-lg sm:text-xl font-bold text-white">
+              Ready to rescue broken code?
+            </h2>
+            <p className="text-xs sm:text-sm text-slate-300">
+              Launch the workspace in one click—no account or setup required.
+            </p>
+          </div>
+          <Link
+            href="/lab"
+            className="inline-flex items-center justify-center gap-2 rounded-lg bg-purple-600 hover:bg-purple-500 px-5 py-2.5 text-sm font-semibold text-white transition-colors shrink-0"
+          >
+            Open Interactive Workspace
+            <ArrowRight className="w-4 h-4" />
+          </Link>
         </section>
       </main>
 
-      <footer className="border-t border-slate-800/80 bg-[#06080e] py-6 px-6 mt-12 text-xs font-mono text-slate-400">
-        <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-4">
-          <p className="text-slate-300">
-            NecroCode — Multi-Language Software Autopsy &amp; Resurrection Lab
-          </p>
-          <span className="text-slate-500">
-            Python 3.12 • Node.js 20 LTS • TypeScript 5.9 • Honest Sandbox Telemetry
-          </span>
+      <footer className="border-t border-slate-800/80 bg-[#06080e] py-5 px-4 sm:px-6 text-xs text-slate-400">
+        <div className="max-w-6xl mx-auto flex flex-wrap items-center justify-between gap-3">
+          <span className="text-slate-300 font-medium">NecroCode</span>
+          <div className="flex items-center gap-4">
+            <Link href="/lab" className="hover:text-white">
+              Workspace
+            </Link>
+            <Link href="/dashboard" className="hover:text-white">
+              System Status
+            </Link>
+            <Link href="/docs" className="hover:text-white">
+              Guide &amp; API
+            </Link>
+          </div>
         </div>
       </footer>
     </div>
