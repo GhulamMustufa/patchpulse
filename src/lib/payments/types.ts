@@ -2,7 +2,7 @@ export interface PaymentOrderRequest {
   amount: number;
   currency: string;
   description: string;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
 }
 
 export interface PaymentOrderResponse {
@@ -11,7 +11,7 @@ export interface PaymentOrderResponse {
   amount: number;
   currency: string;
   approvalUrl?: string;
-  rawResponse?: any;
+  rawResponse?: Record<string, unknown>;
 }
 
 export interface PaymentGateway {

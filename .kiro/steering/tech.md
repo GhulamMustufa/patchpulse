@@ -1,14 +1,13 @@
 # Technical Steering & Architectural Constraints
 
 ## Tech Stack
-* **Framework:** Next.js 15 (App Router) + React 19 + TypeScript 5
-* **Styling:** Tailwind CSS + dark-mode first design
-* **Testing:** Vitest for unit/integration tests; Playwright for end-to-end browser tests
-* **Validation:** Zod schemas for all API payloads and LLM outputs
-* **Security:** Semgrep static code analysis, zero hardcoded credentials
+* **Framework:** Next.js 15 (App Router) + React 19 + TypeScript 5.9.3
+* **Validation:** Zod schemas (`src/lib/necro-engine/schemas.ts`) for all API payloads, LLM outputs, and worker responses
+* **AI Integration:** `@google/generative-ai` (`src/lib/ai.ts`) with deterministic fallback for Python, JavaScript, and TypeScript
+* **Workers:** Dedicated Python 3.12 worker (`sandbox-worker/`) and Node.js 20.19.4 + TypeScript 5.9.3 worker (`sandbox-worker/node/`)
 
 ## Engineering Rules
-1. Every new API route or data transformer must have a corresponding Vitest test in `src/lib/__tests__/`.
-2. All components must be accessible and responsive down to 360px mobile viewport.
-3. Use strict TypeScript types. Never use `any`.
-4. Always handle error states with graceful user-facing recovery.
+1. Never execute `npm install`, `npm ci`, `npx`, `pip install`, lifecycle scripts, or repository-defined shell commands inside the sandbox.
+2. Reject unsafe paths, symbolic links, custom registry overrides, and `git+`/URL/`file:` dependencies before execution.
+3. Fail closed (`VERIFICATION_BLOCKED`) whenever no isolation driver or worker is available.
+4. Maintain Vitest coverage for every runtime, dependency policy, and security isolation vector in `src/lib/__tests__/`.

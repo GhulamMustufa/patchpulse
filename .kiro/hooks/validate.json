@@ -2,12 +2,12 @@
   "version": "v1",
   "hooks": [
     {
-      "name": "Run unit tests on save",
+      "name": "Run typecheck and unit tests on save",
       "trigger": "PostFileSave",
       "matcher": "\\.(ts|tsx)$",
       "action": {
         "type": "command",
-        "command": "npm run test"
+        "command": "npm test && npm run lint"
       }
     }
   ]

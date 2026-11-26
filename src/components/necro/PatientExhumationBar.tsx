@@ -1,15 +1,19 @@
-"useclient";
+"use client";
 
 import React from "react";
-import { NecroPatient } from "@/lib/necro-engine/types";
+import { LanguageType, NecroPatient } from "@/lib/necro-engine/types";
 import { PRESET_PATIENTS } from "@/lib/necro-engine/patients";
-import { Skull, FileCode, Clock, MapPin, Sparkles } from "lucide-react";
+import { Skull, Clock, MapPin, Sparkles, GitBranch } from "lucide-react";
 
 interface PatientExhumationBarProps {
   selectedPatientId: string;
   onSelectPatient: (patient: NecroPatient) => void;
   isCustomMode: boolean;
   onToggleCustomMode: () => void;
+  customLanguage: LanguageType;
+  onCustomLanguageChange: (language: LanguageType) => void;
+  isGitHubMode?: boolean;
+  onToggleGitHubMode?: () => void;
 }
 
 export function PatientExhumationBar({
@@ -17,6 +21,10 @@ export function PatientExhumationBar({
   onSelectPatient,
   isCustomMode,
   onToggleCustomMode,
+  customLanguage,
+  onCustomLanguageChange,
+  isGitHubMode = false,
+  onToggleGitHubMode,
 }: PatientExhumationBarProps) {
   return (
     <div className="space-y-4">
@@ -27,41 +35,86 @@ export function PatientExhumationBar({
             Repository Graveyard — Select Patient to Exhume
           </h2>
           <p className="text-xs text-slate-400">
-            Choose a deceased historical repository or inject custom decayed code for digital autopsy.
+            Choose a pre-seeded historical patient, paste custom code, or ingest a public Python GitHub repository.
           </p>
         </div>
 
-        <button
-          onClick={onToggleCustomMode}
-          className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-mono transition-all ${
-            isCustomMode
-              ? "border-purple-500 bg-purple-950/40 text-purple-300 shadow-sm"
-              : "border-slate-800 bg-slate-900/60 text-slate-400 hover:border-slate-700 hover:text-slate-200"
-          }`}
-        >
-          <Sparkles className="h-3.5 w-3.5" />
-          {isCustomMode ? "Viewing Custom Code Lab" : "Exhume Custom Repository / Code"}
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          {onToggleGitHubMode && (
+            <button
+              type="button"
+              onClick={onToggleGitHubMode}
+              className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-mono transition-all ${
+                isGitHubMode
+                  ? "border-emerald-500 bg-emerald-950/40 text-emerald-300 shadow-sm"
+                  : "border-slate-800 bg-slate-900/60 text-slate-300 hover:border-slate-700 hover:text-white"
+              }`}
+            >
+              <GitBranch className="h-3.5 w-3.5" />
+              {isGitHubMode ? "GitHub Ingestion Active" : "Ingest GitHub Repo"}
+            </button>
+          )}
+
+          <button
+            type="button"
+            onClick={onToggleCustomMode}
+            className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-mono transition-all ${
+              isCustomMode && !isGitHubMode
+                ? "border-purple-500 bg-purple-950/40 text-purple-300 shadow-sm"
+                : "border-slate-800 bg-slate-900/60 text-slate-300 hover:border-slate-700 hover:text-white"
+            }`}
+          >
+            <Sparkles className="h-3.5 w-3.5" />
+            {isCustomMode && !isGitHubMode ? "Custom Code Lab Active" : "Paste Custom Code"}
+          </button>
+        </div>
       </div>
+
+      {isCustomMode && !isGitHubMode && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-purple-900/60 bg-purple-950/20 px-4 py-2.5 text-xs font-mono">
+          <span className="text-purple-200">
+            Custom Subject Language Target:
+          </span>
+          <div className="flex items-center gap-2" role="group" aria-label="Select source language">
+            {(["python", "javascript", "typescript"] as LanguageType[]).map((lang) => (
+              <button
+                key={lang}
+                type="button"
+                onClick={() => onCustomLanguageChange(lang)}
+                aria-pressed={customLanguage === lang}
+                className={`rounded-md border px-2.5 py-1 text-xs uppercase transition ${
+                  customLanguage === lang
+                    ? "border-purple-400 bg-purple-600/30 text-white font-semibold"
+                    : "border-slate-700 bg-slate-900/70 text-slate-400 hover:text-slate-200"
+                }`}
+              >
+                {lang}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
         {PRESET_PATIENTS.map((patient) => {
-          const isSelected = !isCustomMode && selectedPatientId === patient.id;
+          const isSelected =
+            !isCustomMode && !isGitHubMode && selectedPatientId === patient.id;
 
           return (
-            <div
+            <button
               key={patient.id}
+              type="button"
               onClick={() => onSelectPatient(patient)}
-              className={`group relative cursor-pointer overflow-hidden rounded-xl border p-4 transition-all duration-200 ${
+              aria-pressed={isSelected}
+              className={`group relative text-left cursor-pointer overflow-hidden rounded-xl border p-4 transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400 ${
                 isSelected
                   ? "border-purple-500/80 bg-purple-950/20 shadow-lg shadow-purple-950/30 ring-1 ring-purple-500/50"
                   : "border-slate-800/80 bg-slate-900/40 hover:border-slate-700 hover:bg-slate-900/80"
               }`}
             >
-              {/* Top Row: Name and Language */}
               <div className="flex items-start justify-between gap-2 mb-2">
                 <div>
-                  <h3 className="font-semibold text-slate-100 group-hover:text-purple-300 transition-colors flex items-center gap-2">
+                  <h3 className="font-semibold text-slate-100 group-hover:text-purple-300 transition-colors flex flex-wrap items-center gap-2">
                     {patient.name}
                     {isSelected && (
                       <span className="rounded bg-purple-500/20 px-1.5 py-0.5 text-[10px] font-mono text-purple-300 border border-purple-500/40">
@@ -69,7 +122,7 @@ export function PatientExhumationBar({
                       </span>
                     )}
                   </h3>
-                  <div className="flex items-center gap-2 text-xs font-mono text-slate-400 mt-0.5">
+                  <div className="flex flex-wrap items-center gap-2 text-xs font-mono text-slate-400 mt-0.5">
                     <span className="flex items-center gap-1">
                       <Clock className="h-3 w-3 text-rose-400" />
                       Died: {patient.deceasedYear}
@@ -93,12 +146,10 @@ export function PatientExhumationBar({
                 </span>
               </div>
 
-              {/* Tombstone Epitaph */}
               <p className="text-xs italic text-slate-400 border-l-2 border-slate-700/60 pl-2.5 my-2.5">
-                "{patient.tombstoneInscription}"
+                &ldquo;{patient.tombstoneInscription}&rdquo;
               </p>
 
-              {/* Bottom Metadata Badges */}
               <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-slate-800/60">
                 <span className="text-[11px] font-mono text-slate-500">
                   Dead Dependencies:
@@ -112,7 +163,7 @@ export function PatientExhumationBar({
                   </span>
                 ))}
               </div>
-            </div>
+            </button>
           );
         })}
       </div>

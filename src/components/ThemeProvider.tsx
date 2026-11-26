@@ -14,7 +14,6 @@ const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const [theme, setThemeState] = useState<Theme>("dark");
-  const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
     const saved = localStorage.getItem("hackathon-theme") as Theme | null;
@@ -26,7 +25,6 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
       setThemeState("dark");
       document.documentElement.classList.add("dark");
     }
-    setMounted(true);
   }, []);
 
   const setTheme = (newTheme: Theme) => {

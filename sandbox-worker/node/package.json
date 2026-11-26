@@ -1,0 +1,9 @@
+{
+  "name": "necrocode-node-sandbox-worker",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "typescript": "5.9.3"
+  }
+}

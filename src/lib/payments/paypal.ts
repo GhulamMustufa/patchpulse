@@ -58,8 +58,11 @@ export class PayPalPaymentGateway implements PaymentGateway {
         ],
       }),
     });
-    const data = await res.json();
-    const approveLink = data.links?.find((l: any) => l.rel === "approve")?.href;
+    const data = (await res.json()) as {
+      id: string;
+      links?: Array<{ rel?: string; href?: string }>;
+    };
+    const approveLink = data.links?.find((l) => l.rel === "approve")?.href;
 
     return {
       id: data.id,

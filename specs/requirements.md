@@ -1,51 +1,32 @@
 # 📋 Requirements Specification: NecroCode
 
-> **Project Name:** NecroCode — The AI Software Autopsy & Resurrection Engine  
-> **Target Hackathon:** AWS Kiroween (Devpost)  
-> **Official Category:** Resurrection (Eligible for Best Student Project & Best Demo)  
-> **Status:** APPROVED & LOCKED
+> **Project Name:** NecroCode — AI Software Autopsy & Resurrection Engine  
+> **Status:** PHASE 2 IMPLEMENTED (Sandbox Execution Scheduled for Phase 3)
 
 ---
 
 ## 1. Executive Summary
-Millions of valuable open-source repositories from 2012–2020 are dead on GitHub—abandoned due to deprecated dependencies, obsolete syntax, and security vulnerabilities. **NecroCode** performs a digital autopsy on dead legacy codebases, diagnoses the exact "Cause of Death", and autonomously resurrects them into modern, runnable, test-passing software using Kiro Spec-Driven Development.
+Abandoned Python repositories often fail on modern runtimes due to Python 2 syntax, removed standard library modules, outdated or conflicting dependencies, and missing configuration. **NecroCode** ingests public Python repositories, diagnoses root compatibility issues, synthesizes syntax-validated AST and Gemini AI repair patches, and prepares non-executing verification reports with honest status tracking.
 
 ---
 
-## 2. Core Functional Requirements (Must-Have MVP)
+## 2. Core Functional Requirements
 
-### FR-1: 1-Click Patient Exhumation (Evaluator Demo Rule)
-* The UI must provide **two real, famous dead legacy repositories pre-seeded as 1-click presets**:
-  * **Patient #1 (Python 2.7 URL Archiver — Died 2014):** Broken by `print "..."` statements, deprecated `urllib2`, `dict.iteritems()`, and `xrange()`. Fails on Python 3 with `SyntaxError`.
-  * **Patient #2 (Node.js 6 Webhook Dispatcher — Died 2016):** Broken by deprecated `request` library, old CommonJS `require()`, and callback nesting. Fails on modern Node 20+.
-* Evaluators can also paste custom legacy code or an archived GitHub URL.
+### FR-1: Repository & Code Ingestion
+* Support **pre-seeded historical patients** (`Archivus Mortis` Python 2.7, `Webhook Specter` Node.js 6) for instant 1-click evaluation.
+* Support **custom code paste** with explicit language selection (`python`, `javascript`, `typescript`).
+* Support **public GitHub repository ingestion** (`POST /api/repo/ingest`) with strict `https://github.com/<owner>/<repo>` validation, plus **controlled `.zip` archive uploads** with size (`5 MB`), file count (`35`), per-file size (`100 KB`), symlink, and path-traversal protections.
 
-### FR-2: Digital Autopsy & Pathology Diagnosis
-* Computes and displays:
-  * **Status:** Flatline (DEAD)
-  * **Decay Severity Score:** (0–100%)
-  * **Estimated Time of Death:** (e.g. November 2015)
-  * **Official Cause of Death:** Exact deprecated dependencies and syntax errors identified with line numbers.
+### FR-2: Real Python Repository Diagnosis
+* `POST /api/diagnose` inspects actual repository files and manifests (`requirements.txt`, `pyproject.toml`, `setup.py`, `.python-version`, `.py`, test files).
+* Reports Python version compatibility, `ast.parse` syntax errors, removed stdlib imports, outdated/conflicting dependencies, missing configuration, and discovered tests.
+* Computes toxicity transparently (`0%` when clean) and distinguishes `confirmed` static/AST findings from `ai_suggestion` findings.
 
-### FR-3: Deterministic AST & Agentic Resurrection
-* Autonomously transforms legacy code into modern, clean standards:
-  * Python 2 $\rightarrow$ Modern Python 3.12 (Parenthesized prints, modern `urllib.request`, `dict.items()`, clean type hints).
-  * Node CommonJS $\rightarrow$ Modern Node 20+ ESM (Native `fetch()`, `import/export`, `async/await`, modern `package.json`).
-* Generates a side-by-side interactive Code Diff Viewer (Red = Deceased, Green = Resurrected).
+### FR-3: AI + AST Repair Synthesis
+* `POST /api/resurrect` integrates `@google/generative-ai` (`src/lib/ai.ts`) alongside deterministic Python AST/codemod transforms (`src/lib/necro-engine/repair.ts`).
+* Falls back gracefully when `GEMINI_API_KEY` is absent, times out, or returns invalid JSON.
+* Preserves original files, outputs unified diffs (`Unified Diff` / `Split View`), supports patch approval/reset, and validates every repaired `.py` file via `ast.parse` before marking it `valid`.
 
-### FR-4: Real-Time Animated ECG Monitor (Vital Signs)
-* Features an animated visual Electrocardiogram (ECG) monitor:
-  * **Initial State:** Red flatline ($\heartsuit$ 0 BPM — Deceased).
-  * **During Exorcism:** Amber defibrillation wave ($\heartsuit$ 45 BPM — Reviving).
-  * **Post-Resurrection:** Pulsing emerald green wave ($\heartsuit$ 78 BPM — Resurrected & Healthy).
-
-### FR-5: Automated Test Verification & Downloadable Patch
-* Executes test assertions against the resurrected code to prove functional equivalence.
-* Provides a 1-click **"Download Resurrected ZIP"** and **"Copy Unified Git Patch"**.
-
----
-
-## 3. Non-Functional & Security Constraints
-* **Safe Sandbox Rule:** Code transformation and verification must run deterministically in browser RAM / sandboxed API routes. No arbitrary untrusted shell execution.
-* **Costume Aesthetic:** Victorian Gothic medical morgue theme (Obsidian black `#0B0C10`, Toxic emerald `#00FFA3`, Blood red `#FF4C4C`, Vintage parchment `#E0E2EC`).
-* **Kiro Integration:** All specs and hooks must be mirrored into `/.kiro/specs/` and `/.kiro/hooks/` to prove deep Kiro IDE usage.
+### FR-4: Honest Verification Preparation & ECG Telemetry
+* `POST /api/verify` performs non-executing Python AST syntax checks, static re-scans, test discovery, timeout budgeting, and structured logging.
+* Untrusted `pytest`/`unittest` execution is **explicitly deferred to Phase 3's isolated sandbox**; pending tests are reported as `PENDING_SANDBOX` and ECG shows `SYNTAX_VERIFIED` (`64 BPM`) or `FAILED` (`0 BPM`), never fabricated `ALIVE` / `78 BPM`.

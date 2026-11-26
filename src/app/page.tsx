@@ -1,129 +1,834 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { Badge } from "@/components/ui/Badge";
-import { ThemeToggle } from "@/components/ui/ThemeToggle";
 import { PRESET_PATIENTS } from "@/lib/necro-engine/patients";
-import { NecroPatient, VitalState, LanguageType } from "@/lib/necro-engine/types";
 import {
-  generateAutopsyReport,
+  AutopsyReport,
+  LanguageType,
+  NecroPatient,
+  ResurrectionState,
+  VitalState,
+} from "@/lib/necro-engine/types";
+import {
+  FilePatch,
+  IngestedRepository,
+  RepositoryDiagnosis,
+  SandboxWorkerResult,
+} from "@/lib/necro-engine/schemas";
+import {
+  buildIngestedRepositoryMetadata,
+  createUnifiedDiff,
+  detectProjectLanguageAndFramework,
   diagnoseLegacyCode,
+  ProjectLanguageProfile,
   resurrectCode,
+  verifyResurrection,
 } from "@/lib/necro-engine";
 import { ECGMonitor } from "@/components/necro/ECGMonitor";
 import { PatientExhumationBar } from "@/components/necro/PatientExhumationBar";
+import { GitHubIngestPanel } from "@/components/necro/GitHubIngestPanel";
 import { SideBySideDiff } from "@/components/necro/SideBySideDiff";
 import { AutopsyReportCard } from "@/components/necro/AutopsyReportCard";
-import {
-  Skull,
-  Zap,
-  Activity,
-  Layers,
-  Sparkles,
-  GitPullRequest,
-  CheckCircle2,
-  GraduationCap,
-  ExternalLink,
-} from "lucide-react";
+import { useToast } from "@/components/ui/Toast";
+import { Skull, Layers, BookOpen, Activity, Terminal } from "lucide-react";
 
 export default function NecroCodeLabPage() {
+  const { toast } = useToast();
+
+  // Mode selection: preset | custom | github
   const [selectedPatient, setSelectedPatient] = useState<NecroPatient>(
     PRESET_PATIENTS[0]
   );
   const [isCustomMode, setIsCustomMode] = useState(false);
-  const [customCode, setCustomCode] = useState<string>(PRESET_PATIENTS[0].deadCode);
+  const [isGitHubMode, setIsGitHubMode] = useState(false);
+
+  const [customCode, setCustomCode] = useState<string>(
+    PRESET_PATIENTS[0].deadCode
+  );
   const [customLanguage, setCustomLanguage] = useState<LanguageType>("python");
+
+  // GitHub / ZIP repository state
+  const [ingestedRepo, setIngestedRepo] = useState<IngestedRepository | null>(
+    null
+  );
+  const [languageProfile, setLanguageProfile] =
+    useState<ProjectLanguageProfile | null>(null);
+  const [ingestLoading, setIngestLoading] = useState(false);
+  const [ingestError, setIngestError] = useState<string | null>(null);
+  const [selectedFilePath, setSelectedFilePath] = useState<string>("");
+  const [repoDiagnosis, setRepoDiagnosis] =
+    useState<RepositoryDiagnosis | null>(null);
+  const [repoPatches, setRepoPatches] = useState<FilePatch[]>([]);
+  const [aiStatusLabel, setAiStatusLabel] = useState<string>("");
+  const [verificationLogs, setVerificationLogs] = useState<string[]>([]);
+  const [serverVerificationReport, setServerVerificationReport] =
+    useState<ReturnType<typeof verifyResurrection> | null>(null);
 
   // Telemetry & Vital State
   const [vitalState, setVitalState] = useState<VitalState>("DEAD");
+  const [resurrectionState, setResurrectionState] =
+    useState<ResurrectionState>("DIAGNOSED");
   const [bpm, setBpm] = useState<number>(0);
   const [isResurrecting, setIsResurrecting] = useState<boolean>(false);
   const [isResurrected, setIsResurrected] = useState<boolean>(false);
+  const [isApproved, setIsApproved] = useState<boolean>(false);
+  const [isRunningSandbox, setIsRunningSandbox] = useState<boolean>(false);
+  const [sandboxJobResult, setSandboxJobResult] =
+    useState<SandboxWorkerResult | null>(null);
+  const [sandboxDependencyStatus, setSandboxDependencyStatus] = useState<string>("");
+  const [sandboxRuntimeInfo, setSandboxRuntimeInfo] = useState<{
+    language?: string;
+    runtime?: string;
+    framework?: string;
+  } | null>(null);
+  const [sandboxError, setSandboxError] = useState<string | null>(null);
 
-  // Active Code & Steps
+  // Active Single-File Code & Steps (Preset fallback)
   const [resurrectedCode, setResurrectedCode] = useState<string>("");
   const [resurrectionSteps, setResurrectionSteps] = useState<string[]>([]);
+  const [repairWarnings, setRepairWarnings] = useState<string[]>([]);
 
-  // Computed Autopsy Report
-  const currentDeadCode = isCustomMode ? customCode : selectedPatient.deadCode;
-  const currentLanguage = isCustomMode ? customLanguage : selectedPatient.language;
-  const currentPatientName = isCustomMode ? "Custom Injected Artifact" : selectedPatient.name;
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
+  const requestSeqRef = useRef<number>(0);
 
-  const currentReport = React.useMemo(() => {
-    if (!isCustomMode) {
-      return generateAutopsyReport(selectedPatient);
+  const cancelPendingRun = () => {
+    requestSeqRef.current += 1;
+    if (timerRef.current) {
+      clearTimeout(timerRef.current);
+      timerRef.current = null;
     }
-    const diag = diagnoseLegacyCode(customCode, customLanguage);
-    const res = resurrectCode(customCode, customLanguage);
-    return {
-      patientId: "custom_subject",
-      patientName: "Custom Injected Code Subject",
-      language: customLanguage,
-      deceasedYear: 2015,
-      toxicityScore: diag.toxicityScore,
-      fatalErrors: diag.fatalErrors,
-      primaryCauseOfDeath: diag.primaryCauseOfDeath,
-      resurrectedCode: res.resurrectedCode,
-      resurrectionPlan: res.stepsApplied,
-      testsPassed: 3,
-      testsTotal: 3,
-      heartbeatBpm: 78,
-    };
-  }, [selectedPatient, isCustomMode, customCode, customLanguage]);
+    if (abortRef.current) {
+      abortRef.current.abort();
+      abortRef.current = null;
+    }
+  };
 
-  const handleSelectPatient = (patient: NecroPatient) => {
-    setIsCustomMode(false);
-    setSelectedPatient(patient);
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+      if (abortRef.current) abortRef.current.abort();
+    };
+  }, []);
+
+  const resetLabState = () => {
+    cancelPendingRun();
     setVitalState("DEAD");
+    setResurrectionState("DIAGNOSED");
     setBpm(0);
     setIsResurrected(false);
     setIsResurrecting(false);
+    setIsApproved(false);
+    setIsRunningSandbox(false);
+    setSandboxJobResult(null);
+    setSandboxDependencyStatus("");
+    setSandboxRuntimeInfo(null);
+    setSandboxError(null);
     setResurrectedCode("");
     setResurrectionSteps([]);
+    setRepairWarnings([]);
+    setRepoPatches([]);
+    setServerVerificationReport(null);
+    setVerificationLogs([]);
+    setAiStatusLabel("");
+  };
+
+  const activeRepoFile = React.useMemo(() => {
+    if (!ingestedRepo) return null;
+    return (
+      ingestedRepo.files.find((f) => f.path === selectedFilePath) ??
+      ingestedRepo.files.find(
+        (f) =>
+          f.language === "python" ||
+          f.language === "typescript" ||
+          f.language === "javascript"
+      ) ??
+      ingestedRepo.files[0] ??
+      null
+    );
+  }, [ingestedRepo, selectedFilePath]);
+
+  const activePatch = React.useMemo(() => {
+    if (repoPatches.length === 0) return null;
+    if (isGitHubMode && activeRepoFile) {
+      return repoPatches.find((p) => p.filePath === activeRepoFile.path) ?? null;
+    }
+    return repoPatches[0] ?? null;
+  }, [isGitHubMode, activeRepoFile, repoPatches]);
+
+  const currentDeadCode = isGitHubMode
+    ? activeRepoFile?.content ?? ""
+    : isCustomMode
+    ? customCode
+    : selectedPatient.deadCode;
+
+  const currentLanguage: LanguageType = React.useMemo(() => {
+    if (isGitHubMode) {
+      if (activeRepoFile?.language === "typescript") return "typescript";
+      if (activeRepoFile?.language === "javascript") return "javascript";
+      if (activeRepoFile?.language === "python") return "python";
+      if (languageProfile?.primaryLanguage === "typescript") return "typescript";
+      if (languageProfile?.primaryLanguage === "javascript") return "javascript";
+      return "python";
+    }
+    return isCustomMode ? customLanguage : selectedPatient.language;
+  }, [isGitHubMode, activeRepoFile, languageProfile, isCustomMode, customLanguage, selectedPatient.language]);
+
+  const currentPatientName = isGitHubMode
+    ? ingestedRepo?.name ?? "No Repository Ingested"
+    : isCustomMode
+    ? `Custom ${customLanguage.toUpperCase()} Subject`
+    : selectedPatient.name;
+
+  const displayedResurrectedCode =
+    isGitHubMode || isCustomMode
+      ? activePatch?.proposedContent ?? resurrectedCode
+      : resurrectedCode;
+
+  const displayedSteps = React.useMemo(
+    () =>
+      isGitHubMode || isCustomMode
+        ? activePatch?.stepsApplied ?? resurrectionSteps
+        : resurrectionSteps,
+    [isGitHubMode, isCustomMode, activePatch, resurrectionSteps]
+  );
+
+  const displayedWarnings =
+    isGitHubMode || isCustomMode
+      ? activePatch?.warnings ?? repairWarnings
+      : repairWarnings;
+
+  const displayedUnifiedDiff =
+    (isGitHubMode || isCustomMode) && activePatch
+      ? activePatch.unifiedDiff
+      : isResurrected && displayedResurrectedCode
+      ? createUnifiedDiff(
+          isCustomMode
+            ? `custom.${currentLanguage === "python" ? "py" : currentLanguage === "typescript" ? "ts" : "js"}`
+            : selectedPatient.id,
+          currentDeadCode,
+          displayedResurrectedCode
+        )
+      : "";
+
+  const currentReport: AutopsyReport = React.useMemo(() => {
+    if ((isGitHubMode || isCustomMode) && repoDiagnosis) {
+      const mappedFindings = repoDiagnosis.findings.map((f) => ({
+        line: f.line ?? 1,
+        file: f.file,
+        rule: f.finding,
+        severity: f.severity,
+        origin: f.origin,
+        diagnosis: f.explanation,
+        recommendedRepair: f.recommendedRepair,
+        legacySnippet: f.legacySnippet || f.file,
+        repairedSnippet: f.repairedSnippet || f.recommendedRepair,
+      }));
+
+      const verification =
+        serverVerificationReport ??
+        verifyResurrection(
+          {
+            id: ingestedRepo?.id ?? "custom_subject",
+            language: currentLanguage,
+            deadCode: currentDeadCode,
+            testSuites: [],
+          },
+          isResurrected ? displayedResurrectedCode : currentDeadCode
+        );
+
+      return {
+        patientId: ingestedRepo?.id ?? "custom_subject",
+        patientName: currentPatientName,
+        language: currentLanguage,
+        deceasedYear: ingestedRepo?.lastPushedAt
+          ? new Date(ingestedRepo.lastPushedAt).getFullYear()
+          : 2018,
+        toxicityScore: repoDiagnosis.toxicityScore,
+        fatalErrors: mappedFindings,
+        primaryCauseOfDeath: repoDiagnosis.primaryCauseOfDeath,
+        resurrectedCode: isResurrected ? displayedResurrectedCode : "",
+        resurrectionPlan: displayedSteps,
+        testsPassed: isResurrected ? verification.passedTests : 0,
+        testsTotal: verification.totalTests,
+        heartbeatBpm: isResurrected ? verification.heartbeatBpm : 0,
+        verificationStatus: isResurrected
+          ? verification.verificationStatus
+          : "UNVERIFIED",
+        syntaxValid: isResurrected ? verification.syntaxValid : false,
+        executionResults: verification.executionResults,
+      };
+    }
+
+    const diag = diagnoseLegacyCode(currentDeadCode, currentLanguage);
+    const activeCode = isResurrected ? resurrectedCode : "";
+    const verification = verifyResurrection(
+      {
+        id: isCustomMode ? "custom_subject" : selectedPatient.id,
+        language: currentLanguage,
+        deadCode: currentDeadCode,
+        testSuites: isCustomMode ? [] : selectedPatient.testSuites,
+      },
+      activeCode || currentDeadCode
+    );
+
+    return {
+      patientId: isCustomMode ? "custom_subject" : selectedPatient.id,
+      patientName: currentPatientName,
+      language: currentLanguage,
+      deceasedYear: isCustomMode ? 2016 : selectedPatient.deceasedYear,
+      toxicityScore: diag.toxicityScore,
+      fatalErrors: diag.fatalErrors,
+      primaryCauseOfDeath: diag.primaryCauseOfDeath,
+      resurrectedCode: activeCode,
+      resurrectionPlan: resurrectionSteps,
+      testsPassed: isResurrected ? verification.passedTests : 0,
+      testsTotal: verification.totalTests,
+      heartbeatBpm: isResurrected ? verification.heartbeatBpm : 0,
+      verificationStatus: isResurrected
+        ? verification.verificationStatus
+        : "UNVERIFIED",
+      syntaxValid: isResurrected ? verification.syntaxValid : false,
+      executionResults: verification.executionResults,
+    };
+  }, [
+    currentDeadCode,
+    currentLanguage,
+    currentPatientName,
+    displayedResurrectedCode,
+    displayedSteps,
+    ingestedRepo,
+    isCustomMode,
+    isGitHubMode,
+    isResurrected,
+    repoDiagnosis,
+    resurrectedCode,
+    resurrectionSteps,
+    selectedPatient,
+    serverVerificationReport,
+  ]);
+
+  const handleSelectPatient = (patient: NecroPatient) => {
+    setIsGitHubMode(false);
+    setIsCustomMode(false);
+    setRepoDiagnosis(null);
+    setLanguageProfile(null);
+    setSelectedPatient(patient);
+    resetLabState();
   };
 
   const handleToggleCustomMode = () => {
+    setIsGitHubMode(false);
     const nextCustom = !isCustomMode;
     setIsCustomMode(nextCustom);
+    setRepoDiagnosis(null);
+    setLanguageProfile(null);
     if (nextCustom) {
       setCustomCode(selectedPatient.deadCode);
       setCustomLanguage(selectedPatient.language);
     }
-    setVitalState("DEAD");
-    setBpm(0);
-    setIsResurrected(false);
-    setIsResurrecting(false);
-    setResurrectedCode("");
-    setResurrectionSteps([]);
+    resetLabState();
   };
 
-  const handleResurrect = () => {
+  const handleToggleGitHubMode = () => {
+    const nextGh = !isGitHubMode;
+    setIsGitHubMode(nextGh);
+    setIsCustomMode(false);
+    setIngestError(null);
+    resetLabState();
+  };
+
+  const handleCustomLanguageChange = (lang: LanguageType) => {
+    setCustomLanguage(lang);
+    setRepoDiagnosis(null);
+    resetLabState();
+  };
+
+  const handleCustomCodeChange = (code: string) => {
+    setCustomCode(code);
+    setRepoDiagnosis(null);
+    if (isResurrected || isResurrecting) {
+      resetLabState();
+    }
+  };
+
+  const runServerRepoDiagnosis = async (
+    repo: IngestedRepository,
+    signal: AbortSignal
+  ): Promise<RepositoryDiagnosis> => {
+    const diagRes = await fetch("/api/diagnose", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ repository: repo }),
+      signal,
+    });
+    const diagJson = (await diagRes.json()) as {
+      diagnosis?: RepositoryDiagnosis;
+      error?: string;
+    };
+    if (!diagRes.ok || !diagJson.diagnosis) {
+      throw new Error(diagJson.error || "Diagnosis failed.");
+    }
+    return diagJson.diagnosis;
+  };
+
+  const handleIngestGitHubUrl = async (repoUrl: string) => {
+    resetLabState();
+    setIngestLoading(true);
+    setIngestError(null);
+    setVitalState("DIAGNOSING");
+    setBpm(45);
+
+    const controller = new AbortController();
+    abortRef.current = controller;
+
+    try {
+      const res = await fetch("/api/repo/ingest", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ repoUrl }),
+        signal: controller.signal,
+      });
+      const json = (await res.json()) as {
+        repository?: IngestedRepository;
+        languageProfile?: ProjectLanguageProfile;
+        error?: string;
+      };
+
+      if (!res.ok || !json.repository) {
+        throw new Error(json.error || `Ingestion failed (HTTP ${res.status}).`);
+      }
+
+      const repo = json.repository;
+      setIngestedRepo(repo);
+      const profile =
+        json.languageProfile ?? detectProjectLanguageAndFramework(repo.files);
+      setLanguageProfile(profile);
+
+      const firstSrc =
+        repo.files.find(
+          (f) =>
+            f.language === "python" ||
+            f.language === "typescript" ||
+            f.language === "javascript"
+        ) ?? repo.files[0];
+      setSelectedFilePath(firstSrc?.path ?? "");
+
+      const diag = await runServerRepoDiagnosis(repo, controller.signal);
+      setRepoDiagnosis(diag);
+      setVitalState("DEAD");
+      setResurrectionState("DIAGNOSED");
+      setBpm(0);
+
+      toast({
+        title: `Ingested ${profile.primaryLanguage.toUpperCase()} repository`,
+        description: `${repo.name} (${profile.framework}, ${diag.findings.length} findings)`,
+        type: "success",
+      });
+    } catch (err: unknown) {
+      if (err instanceof Error && err.name === "AbortError") return;
+      const msg =
+        err instanceof Error ? err.message : "Failed to ingest GitHub repository.";
+      setIngestError(msg);
+      setVitalState("DEAD");
+      setBpm(0);
+      toast({ title: "Ingestion failed", description: msg, type: "error" });
+    } finally {
+      setIngestLoading(false);
+    }
+  };
+
+  const handleIngestZipFile = async (file: File) => {
+    resetLabState();
+    setIngestLoading(true);
+    setIngestError(null);
+    setVitalState("DIAGNOSING");
+    setBpm(45);
+
+    const controller = new AbortController();
+    abortRef.current = controller;
+
+    try {
+      const formData = new FormData();
+      formData.append("archive", file);
+
+      const res = await fetch("/api/repo/ingest", {
+        method: "POST",
+        body: formData,
+        signal: controller.signal,
+      });
+      const json = (await res.json()) as {
+        repository?: IngestedRepository;
+        languageProfile?: ProjectLanguageProfile;
+        error?: string;
+      };
+      if (!res.ok || !json.repository) {
+        throw new Error(json.error || `ZIP upload failed (HTTP ${res.status}).`);
+      }
+
+      const repo = json.repository;
+      setIngestedRepo(repo);
+      const profile =
+        json.languageProfile ?? detectProjectLanguageAndFramework(repo.files);
+      setLanguageProfile(profile);
+
+      const firstSrc =
+        repo.files.find(
+          (f) =>
+            f.language === "python" ||
+            f.language === "typescript" ||
+            f.language === "javascript"
+        ) ?? repo.files[0];
+      setSelectedFilePath(firstSrc?.path ?? "");
+
+      const diag = await runServerRepoDiagnosis(repo, controller.signal);
+      setRepoDiagnosis(diag);
+      setVitalState("DEAD");
+      setResurrectionState("DIAGNOSED");
+      setBpm(0);
+
+      toast({
+        title: "ZIP archive ingested",
+        description: `${repo.name} (${profile.primaryLanguage}, ${repo.files.length} files)`,
+        type: "success",
+      });
+    } catch (err: unknown) {
+      if (err instanceof Error && err.name === "AbortError") return;
+      const msg = err instanceof Error ? err.message : "ZIP ingestion failed.";
+      setIngestError(msg);
+      setVitalState("DEAD");
+      setBpm(0);
+      toast({ title: "Archive rejected", description: msg, type: "error" });
+    } finally {
+      setIngestLoading(false);
+    }
+  };
+
+  const handleResurrect = async () => {
+    cancelPendingRun();
+    const runId = requestSeqRef.current;
+
     setIsResurrecting(true);
+    setIsApproved(false);
+    setSandboxJobResult(null);
+    setSandboxError(null);
     setVitalState("RESURRECTING");
     setBpm(45);
 
-    setTimeout(() => {
+    // Server-backed pipeline for GitHub/ZIP repositories OR Custom code (Python, JS, TS)
+    if (isGitHubMode || isCustomMode) {
+      const controller = new AbortController();
+      abortRef.current = controller;
+
+      try {
+        const customExt =
+          customLanguage === "typescript"
+            ? "index.ts"
+            : customLanguage === "javascript"
+            ? "index.js"
+            : "main.py";
+
+        const targetRepo: IngestedRepository =
+          isGitHubMode && ingestedRepo
+            ? ingestedRepo
+            : buildIngestedRepositoryMetadata({
+                id: `custom_${customLanguage}_subject`,
+                source: "custom",
+                name: customExt,
+                files: [
+                  {
+                    path: customExt,
+                    content: customCode,
+                    sizeBytes: customCode.length,
+                    language: customLanguage,
+                    isTestFile: false,
+                    isDependencyManifest: false,
+                  },
+                ],
+                totalBytes: customCode.length,
+                truncated: false,
+                skippedCount: 0,
+                warnings: [],
+              });
+
+        const res = await fetch("/api/resurrect", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            repository: targetRepo,
+            diagnosis: isGitHubMode ? repoDiagnosis ?? undefined : undefined,
+            useAi: true,
+          }),
+          signal: controller.signal,
+        });
+
+        const resJson = (await res.json()) as {
+          diagnosis?: RepositoryDiagnosis;
+          resurrection?: {
+            aiStatus: string;
+            aiModel?: string;
+            aiError?: string;
+            patches: FilePatch[];
+            aiFindings: RepositoryDiagnosis["findings"];
+          };
+          error?: string;
+        };
+
+        if (!res.ok || !resJson.resurrection || !resJson.diagnosis) {
+          throw new Error(resJson.error || "Repair pipeline failed.");
+        }
+
+        if (requestSeqRef.current !== runId) return;
+
+        const combinedDiagnosis: RepositoryDiagnosis = {
+          ...resJson.diagnosis,
+          findings: [
+            ...resJson.diagnosis.findings,
+            ...(resJson.resurrection.aiFindings ?? []),
+          ],
+        };
+        setRepoDiagnosis(combinedDiagnosis);
+        setRepoPatches(resJson.resurrection.patches);
+        if (combinedDiagnosis.languageProfile) {
+          setLanguageProfile(combinedDiagnosis.languageProfile);
+        }
+
+        const aiTag =
+          resJson.resurrection.aiStatus === "live_gemini"
+            ? `Gemini (${resJson.resurrection.aiModel || "live"}) + Deterministic`
+            : "Deterministic AST/Compiler (Gemini Fallback)";
+        setAiStatusLabel(aiTag);
+
+        const patchedFiles = targetRepo.files.map((orig) => {
+          const patch = resJson.resurrection!.patches.find(
+            (p) => p.filePath === orig.path
+          );
+          return {
+            path: orig.path,
+            content: patch ? patch.proposedContent : orig.content,
+            isTestFile: orig.isTestFile,
+          };
+        });
+
+        const verifyRes = await fetch("/api/verify", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            repositoryName: targetRepo.name,
+            files: patchedFiles,
+            timeoutMs: 10_000,
+          }),
+          signal: controller.signal,
+        });
+        const verifyJson = (await verifyRes.json()) as {
+          report?: ReturnType<typeof verifyResurrection>;
+          error?: string;
+        };
+
+        if (!verifyRes.ok || !verifyJson.report) {
+          throw new Error(verifyJson.error || "Verification preparation failed.");
+        }
+
+        if (requestSeqRef.current !== runId) return;
+
+        setServerVerificationReport(verifyJson.report);
+        setVerificationLogs(verifyJson.report.logs);
+        setIsResurrecting(false);
+        setIsResurrected(true);
+        setVitalState(verifyJson.report.vitalState);
+        setResurrectionState(
+          verifyJson.report.vitalState === "SYNTAX_VERIFIED"
+            ? "SYNTAX_VERIFIED"
+            : "FAILED"
+        );
+        setBpm(verifyJson.report.heartbeatBpm);
+
+        toast({
+          title:
+            verifyJson.report.vitalState === "SYNTAX_VERIFIED"
+              ? "Syntax/type check passed (sandbox pending)"
+              : "Syntax/compiler check failed",
+          description: `${resJson.resurrection.patches.filter((p) => p.status === "valid").length} file(s) patched via ${aiTag}.`,
+          type:
+            verifyJson.report.vitalState === "SYNTAX_VERIFIED"
+              ? "success"
+              : "error",
+        });
+      } catch (err: unknown) {
+        if (err instanceof Error && err.name === "AbortError") return;
+        const msg = err instanceof Error ? err.message : "Repair request failed.";
+        setIsResurrecting(false);
+        setVitalState("FAILED");
+        setResurrectionState("FAILED");
+        setBpm(0);
+        setRepairWarnings([msg]);
+        toast({ title: "Repair failed", description: msg, type: "error" });
+      }
+      return;
+    }
+
+    // Preset synchronous reference path
+    timerRef.current = setTimeout(() => {
+      if (requestSeqRef.current !== runId) return;
+
       const result = resurrectCode(
         currentDeadCode,
         currentLanguage,
-        isCustomMode ? undefined : selectedPatient.id
+        selectedPatient.id
+      );
+
+      const verification = verifyResurrection(
+        {
+          id: selectedPatient.id,
+          language: currentLanguage,
+          deadCode: currentDeadCode,
+          testSuites: selectedPatient.testSuites,
+        },
+        result.resurrectedCode
       );
 
       setResurrectedCode(result.resurrectedCode);
       setResurrectionSteps(result.stepsApplied);
+      setRepairWarnings(result.warnings);
+      setVerificationLogs(verification.logs);
       setIsResurrecting(false);
       setIsResurrected(true);
-      setVitalState("ALIVE");
-      setBpm(78);
-    }, 900);
+      setVitalState(verification.vitalState);
+      setResurrectionState(
+        verification.vitalState === "SYNTAX_VERIFIED"
+          ? "SYNTAX_VERIFIED"
+          : "REPAIR_GENERATED"
+      );
+      setBpm(verification.heartbeatBpm);
+      timerRef.current = null;
+    }, 300);
+  };
+
+  const handleRunSandboxTests = async () => {
+    if (isRunningSandbox) return;
+    setIsRunningSandbox(true);
+    setSandboxError(null);
+    setResurrectionState("TESTS_RUNNING");
+    setVitalState("TESTS_RUNNING");
+    setBpm(45);
+
+    try {
+      const fallbackFileName =
+        currentLanguage === "typescript"
+          ? "index.ts"
+          : currentLanguage === "javascript"
+          ? "index.js"
+          : "main.py";
+
+      const filesToRun =
+        isGitHubMode && ingestedRepo
+          ? ingestedRepo.files.map((f) => {
+              const patch = repoPatches.find((p) => p.filePath === f.path);
+              return {
+                path: f.path,
+                content: patch ? patch.proposedContent : f.content,
+              };
+            })
+          : [
+              {
+                path: fallbackFileName,
+                content: displayedResurrectedCode || currentDeadCode,
+              },
+            ];
+
+      const res = await fetch("/api/sandbox/execute", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          repositoryName: currentPatientName,
+          language: isGitHubMode ? undefined : currentLanguage,
+          files: filesToRun,
+          timeoutMs: 8000,
+          repairApproved: isApproved,
+        }),
+      });
+
+      const json = (await res.json()) as {
+        resurrectionState?: ResurrectionState;
+        language?: string;
+        runtime?: string;
+        framework?: string;
+        dependencyPolicy?: { status?: string; reason?: string };
+        result?: SandboxWorkerResult | null;
+        error?: string | null;
+      };
+
+      const nextState = json.resurrectionState ?? "VERIFICATION_BLOCKED";
+      setResurrectionState(nextState);
+      setSandboxJobResult(json.result ?? null);
+      setSandboxError(json.error ?? null);
+      setSandboxDependencyStatus(
+        json.dependencyPolicy?.status
+          ? `${json.dependencyPolicy.status}: ${json.dependencyPolicy.reason ?? ""}`
+          : ""
+      );
+      setSandboxRuntimeInfo({
+        language: json.language,
+        runtime: json.runtime,
+        framework: json.framework,
+      });
+
+      if (nextState === "RESURRECTED") {
+        setVitalState("ALIVE");
+        setBpm(78);
+      } else if (nextState === "PARTIALLY_RESURRECTED") {
+        setVitalState("PARTIAL");
+        setBpm(58);
+      } else if (nextState === "SYNTAX_VERIFIED") {
+        setVitalState("SYNTAX_VERIFIED");
+        setBpm(64);
+      } else if (nextState === "VERIFICATION_BLOCKED") {
+        setVitalState("BLOCKED");
+        setBpm(0);
+      } else {
+        setVitalState("FAILED");
+        setBpm(0);
+      }
+
+      if (json.result) {
+        setVerificationLogs((prev) => [
+          ...prev,
+          `[SANDBOX:${json.result!.driver}/${json.runtime || currentLanguage}] status=${json.result!.status} passed=${json.result!.passedTests}/${json.result!.totalTests} duration=${json.result!.durationMs}ms exitCode=${json.result!.exitCode}`,
+        ]);
+      } else if (json.error) {
+        setVerificationLogs((prev) => [...prev, `[SANDBOX BLOCKED] ${json.error}`]);
+      }
+
+      toast({
+        title: `Sandbox State: ${nextState}`,
+        description:
+          json.error ||
+          (json.result
+            ? `${json.result.passedTests}/${json.result.totalTests} tests passed (${json.result.status})`
+            : "Sandbox execution completed."),
+        type:
+          nextState === "RESURRECTED" || nextState === "SYNTAX_VERIFIED"
+            ? "success"
+            : "error",
+      });
+    } catch (err: unknown) {
+      const msg =
+        err instanceof Error ? err.message : "Sandbox execution request failed.";
+      setResurrectionState("VERIFICATION_BLOCKED");
+      setVitalState("BLOCKED");
+      setBpm(0);
+      setSandboxError(msg);
+      toast({ title: "Sandbox blocked", description: msg, type: "error" });
+    } finally {
+      setIsRunningSandbox(false);
+    }
   };
 
   return (
     <div className="min-h-screen bg-[#05070d] text-slate-100 selection:bg-purple-600 selection:text-white">
-      {/* Top Header */}
-      <header className="sticky top-0 z-50 border-b border-slate-800/80 bg-[#070b14]/90 backdrop-blur-md px-6 py-3">
-        <div className="max-w-7xl mx-auto flex items-center justify-between">
+      <header className="sticky top-0 z-50 border-b border-slate-800/80 bg-[#070b14]/90 backdrop-blur-md px-4 sm:px-6 py-3">
+        <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-purple-950/80 border border-purple-700/60 text-purple-300 shadow-md shadow-purple-950/50">
               <Skull className="h-5 w-5" />
@@ -134,148 +839,281 @@ export default function NecroCodeLabPage() {
                   NECROCODE
                 </span>
                 <span className="rounded bg-purple-500/20 px-2 py-0.5 text-[10px] font-mono text-purple-300 border border-purple-500/40">
-                  KIRO SDD v1.0
+                  PYTHON • JS • TS
                 </span>
               </div>
               <p className="text-[10px] font-mono text-slate-400">
-                AI Software Resurrection & Forensic Autopsy Lab
+                Multi-Language Software Autopsy &amp; Resurrection Lab
               </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-3">
-            <span className="hidden md:inline-flex items-center gap-1.5 rounded-full border border-purple-900/60 bg-purple-950/30 px-3 py-1 text-xs font-mono text-purple-300">
-              <GraduationCap className="h-3.5 w-3.5 text-purple-400" />
-              UTM Student Track
-            </span>
-            <ThemeToggle />
-          </div>
+          <nav
+            className="flex items-center gap-2 text-xs font-mono"
+            aria-label="Primary navigation"
+          >
+            <Link
+              href="/dashboard"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-800 bg-slate-900/60 px-3 py-1.5 text-slate-300 hover:border-slate-700 hover:text-white transition"
+            >
+              <Activity className="h-3.5 w-3.5 text-cyan-400" />
+              Telemetry
+            </Link>
+            <Link
+              href="/docs"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-800 bg-slate-900/60 px-3 py-1.5 text-slate-300 hover:border-slate-700 hover:text-white transition"
+            >
+              <BookOpen className="h-3.5 w-3.5 text-purple-400" />
+              Docs &amp; API
+            </Link>
+          </nav>
         </div>
       </header>
 
-      {/* Main Content Container */}
       <main className="max-w-7xl mx-auto px-4 py-8 space-y-8">
-        {/* Hero Banner */}
-        <div className="relative overflow-hidden rounded-2xl border border-slate-800 bg-gradient-to-b from-[#090e1a] to-[#060911] p-6 md:p-8 shadow-2xl">
+        <section className="relative overflow-hidden rounded-2xl border border-slate-800 bg-gradient-to-b from-[#090e1a] to-[#060911] p-6 md:p-8 shadow-2xl">
           <div className="max-w-3xl space-y-3">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="rounded-full bg-rose-950/60 border border-rose-800/60 px-3 py-1 text-xs font-mono text-rose-300">
-                🧟 AWS Kiroween Hackathon
-              </span>
-              <span className="rounded-full bg-emerald-950/60 border border-emerald-800/60 px-3 py-1 text-xs font-mono text-emerald-300">
-                Target Category: Resurrection ($5,000)
-              </span>
-              <span className="rounded-full bg-cyan-950/60 border border-cyan-800/60 px-3 py-1 text-xs font-mono text-cyan-300">
-                Eligible: Best Student Project ($5,000)
-              </span>
-            </div>
-
             <h1 className="text-2xl md:text-4xl font-extrabold tracking-tight text-white font-mono">
-              DIG UP DEAD REPOSITORIES. RESURRECT WITH KIRO.
+              SOFTWARE AUTOPSY &amp; RESURRECTION LAB
             </h1>
-
             <p className="text-sm md:text-base text-slate-300 leading-relaxed">
-              Every day, thousands of open-source projects die from fatal runtime drift, deprecated standard libraries, and unmaintained dependency rot. NecroCode conducts automated digital autopsies and synthesizes clean, modern, fully verified modern codebases using Kiro Spec-Driven Development.
+              Ingest Python, JavaScript, or TypeScript repositories, diagnose syntax, compiler, and dependency rot, synthesize validated patches, and run isolated verification inside dedicated runtime workers.
             </p>
           </div>
-        </div>
+        </section>
 
-        {/* 1. Patient Exhumation Selector */}
-        <section className="space-y-3">
+        <section className="space-y-4">
           <PatientExhumationBar
             selectedPatientId={selectedPatient.id}
             onSelectPatient={handleSelectPatient}
             isCustomMode={isCustomMode}
             onToggleCustomMode={handleToggleCustomMode}
+            customLanguage={customLanguage}
+            onCustomLanguageChange={handleCustomLanguageChange}
+            isGitHubMode={isGitHubMode}
+            onToggleGitHubMode={handleToggleGitHubMode}
           />
+
+          {isGitHubMode && (
+            <GitHubIngestPanel
+              repository={ingestedRepo}
+              languageProfile={languageProfile}
+              isLoading={ingestLoading}
+              error={ingestError}
+              selectedFilePath={activeRepoFile?.path ?? ""}
+              onSelectFilePath={setSelectedFilePath}
+              onIngestGitHubUrl={handleIngestGitHubUrl}
+              onIngestZipFile={handleIngestZipFile}
+            />
+          )}
         </section>
 
-        {/* 2. Cardiac Telemetry (Lead II ECG) */}
         <section className="space-y-3">
           <ECGMonitor
             vitalState={vitalState}
             bpm={bpm}
             patientName={currentPatientName}
+            resurrectionState={resurrectionState}
           />
         </section>
 
-        {/* 3. Resurrection Operating Theatre (Split View) */}
         <section className="space-y-3">
           <SideBySideDiff
             deadCode={currentDeadCode}
-            resurrectedCode={resurrectedCode}
+            resurrectedCode={displayedResurrectedCode}
+            unifiedDiff={displayedUnifiedDiff}
+            activeFilePath={isGitHubMode ? activeRepoFile?.path : undefined}
             language={currentLanguage}
             isResurrecting={isResurrecting}
             isResurrected={isResurrected}
             onResurrect={handleResurrect}
-            resurrectionSteps={resurrectionSteps}
-            isCustomMode={isCustomMode}
-            onCustomCodeChange={setCustomCode}
+            resurrectionSteps={displayedSteps}
+            warnings={displayedWarnings}
+            verificationStatus={
+              sandboxJobResult
+                ? sandboxJobResult.status === "PASSED"
+                  ? "PASSED"
+                  : sandboxJobResult.status === "PARTIAL"
+                  ? "PARTIAL"
+                  : sandboxJobResult.status === "NO_TESTS_FOUND"
+                  ? "NO_TESTS_FOUND"
+                  : sandboxJobResult.status === "VERIFICATION_BLOCKED"
+                  ? "VERIFICATION_BLOCKED"
+                  : "FAILED"
+                : sandboxError
+                ? "VERIFICATION_BLOCKED"
+                : currentReport.verificationStatus
+            }
+            repairSourceLabel={
+              isGitHubMode || isCustomMode
+                ? aiStatusLabel || "AST / Compiler + Gemini"
+                : "Preset Golden Reference"
+            }
+            isCustomMode={isCustomMode && !isGitHubMode}
+            onCustomCodeChange={handleCustomCodeChange}
+            isApproved={isApproved}
+            onApproveChanges={() => {
+              setIsApproved(true);
+              if (
+                resurrectionState === "REPAIR_GENERATED" ||
+                resurrectionState === "SYNTAX_VERIFIED"
+              ) {
+                setResurrectionState("REPAIR_APPROVED");
+              }
+            }}
+            onResetApproval={() => setIsApproved(false)}
+            canRunSandbox={
+              currentLanguage === "python" ||
+              currentLanguage === "javascript" ||
+              currentLanguage === "typescript"
+            }
+            isRunningSandbox={isRunningSandbox}
+            onRunSandboxTests={handleRunSandboxTests}
           />
         </section>
 
-        {/* 4. Forensic Pathology & Autopsy Findings */}
+        {(sandboxJobResult || sandboxError || (repoDiagnosis?.tsDiagnostics?.length ?? 0) > 0) && (
+          <section className="rounded-xl border border-slate-800 bg-[#070b14] p-4 font-mono text-xs space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <span className="font-bold uppercase tracking-wider text-slate-200">
+                Isolated Sandbox Telemetry ({resurrectionState})
+              </span>
+              {sandboxJobResult && (
+                <span className="text-slate-400">
+                  Runtime: {sandboxRuntimeInfo?.runtime || currentLanguage} • Driver:{" "}
+                  {sandboxJobResult.driver} • Duration: {sandboxJobResult.durationMs}ms • Exit:{" "}
+                  {sandboxJobResult.exitCode}
+                </span>
+              )}
+            </div>
+
+            {sandboxDependencyStatus && (
+              <div className="rounded border border-slate-800 bg-slate-900/60 px-3 py-2 text-[11px] text-slate-300">
+                Dependency Policy: {sandboxDependencyStatus}
+              </div>
+            )}
+
+            {sandboxError && (
+              <div className="rounded border border-rose-800/70 bg-rose-950/30 p-3 text-rose-300">
+                {sandboxError}
+              </div>
+            )}
+
+            {(sandboxJobResult?.tsDiagnostics?.length ||
+              repoDiagnosis?.tsDiagnostics?.length) ? (
+              <div className="rounded border border-amber-900/60 bg-amber-950/20 p-3 space-y-1">
+                <div className="font-bold text-amber-300">
+                  TypeScript / Compiler Diagnostics
+                </div>
+                {(sandboxJobResult?.tsDiagnostics?.length
+                  ? sandboxJobResult.tsDiagnostics
+                  : repoDiagnosis?.tsDiagnostics ?? []
+                ).map((d, i) => (
+                  <div key={i} className="text-[11px] text-amber-200">
+                    {d.file}:{d.line}:{d.column} [{d.code}] {d.message}
+                  </div>
+                ))}
+              </div>
+            ) : null}
+
+            {sandboxJobResult && (
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center">
+                <div className="rounded bg-slate-900/70 border border-slate-800 p-2">
+                  <div className="text-[10px] text-slate-400">TOTAL</div>
+                  <div className="text-base font-bold text-slate-100">
+                    {sandboxJobResult.totalTests}
+                  </div>
+                </div>
+                <div className="rounded bg-slate-900/70 border border-slate-800 p-2">
+                  <div className="text-[10px] text-slate-400">PASSED</div>
+                  <div className="text-base font-bold text-emerald-400">
+                    {sandboxJobResult.passedTests}
+                  </div>
+                </div>
+                <div className="rounded bg-slate-900/70 border border-slate-800 p-2">
+                  <div className="text-[10px] text-slate-400">FAILED</div>
+                  <div className="text-base font-bold text-rose-400">
+                    {sandboxJobResult.failedTests}
+                  </div>
+                </div>
+                <div className="rounded bg-slate-900/70 border border-slate-800 p-2">
+                  <div className="text-[10px] text-slate-400">SKIPPED</div>
+                  <div className="text-base font-bold text-amber-300">
+                    {sandboxJobResult.skippedTests}
+                  </div>
+                </div>
+              </div>
+            )}
+          </section>
+        )}
+
+        {verificationLogs.length > 0 && (
+          <section className="rounded-xl border border-slate-800 bg-[#070b14] p-4 font-mono text-xs space-y-2">
+            <div className="flex items-center gap-2 text-slate-300 font-bold uppercase tracking-wider">
+              <Terminal className="h-3.5 w-3.5 text-cyan-400" />
+              Structured Verification Logs
+            </div>
+            <div className="rounded-lg bg-[#05070d] border border-slate-800/80 p-3 space-y-1 text-slate-300 max-h-48 overflow-y-auto">
+              {verificationLogs.map((log, i) => (
+                <div key={i}>{log}</div>
+              ))}
+            </div>
+          </section>
+        )}
+
         <section className="space-y-3">
           <AutopsyReportCard
             report={currentReport}
             isResurrected={isResurrected}
+            isPresetDemo={!isCustomMode && !isGitHubMode}
           />
         </section>
 
-        {/* 5. Kiro Spec-Driven Architecture Deep-Dive */}
         <section className="rounded-xl border border-slate-800 bg-[#070b14] p-6 space-y-4">
           <div className="flex items-center gap-2">
             <Layers className="h-5 w-5 text-purple-400" />
             <h3 className="font-mono text-base font-bold text-slate-100">
-              Why Kiro Spec-Driven Development (SDD)?
+              Kiro Spec-Driven Architecture (.kiro)
             </h3>
           </div>
 
-          <p className="text-xs md:text-sm text-slate-300 leading-relaxed">
-            Conventional LLM coding agents suffer from severe hallucination when attempting to upgrade complex legacy code: they invent non-existent APIs, introduce subtle runtime crashes, and silently drop business logic. NecroCode enforces Kiro&apos;s three-layer Spec-Driven methodology:
-          </p>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 font-mono text-xs pt-2">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 font-mono text-xs pt-1">
             <div className="rounded-lg border border-slate-800/80 bg-slate-900/40 p-4 space-y-2">
-              <span className="text-purple-400 font-bold block">1. .kiro/specs/requirements.md</span>
+              <span className="text-purple-400 font-bold block">
+                1. .kiro/specs/requirements.md
+              </span>
               <p className="text-slate-400 font-sans text-xs">
-                Specifies exact functional requirements (FR-1 to FR-5), patient boundaries, and zero-loss semantic preservation guarantees before any code is altered.
+                Defines ingestion, Python/JS/TS diagnosis, validated repairs, and isolated sandbox verification rules.
               </p>
             </div>
             <div className="rounded-lg border border-slate-800/80 bg-slate-900/40 p-4 space-y-2">
-              <span className="text-cyan-400 font-bold block">2. .kiro/steering/tech.md</span>
+              <span className="text-cyan-400 font-bold block">
+                2. .kiro/steering/tech.md
+              </span>
               <p className="text-slate-400 font-sans text-xs">
-                Steering guidelines enforce deterministic AST rules: memory-safe Buffer allocation, native fetch over legacy request, and modern Python 3.12 syntax.
+                Enforces Zod schemas, strict TypeScript, lifecycle-script bans, and isolated Python &amp; Node workers.
               </p>
             </div>
             <div className="rounded-lg border border-slate-800/80 bg-slate-900/40 p-4 space-y-2">
-              <span className="text-emerald-400 font-bold block">3. .kiro/hooks/validate.json</span>
+              <span className="text-emerald-400 font-bold block">
+                3. .kiro/hooks/validate.json
+              </span>
               <p className="text-slate-400 font-sans text-xs">
-                Automated post-resurrection test verification hooks run Vitest and Semgrep suites to verify 100% test pass rate before declaring the patient alive.
+                Post-save hook running Vitest verification across Python, JavaScript, TypeScript, and security isolation suites.
               </p>
             </div>
           </div>
         </section>
       </main>
 
-      {/* Footer */}
       <footer className="border-t border-slate-800/80 bg-[#06080e] py-6 px-6 mt-12 text-xs font-mono text-slate-400">
         <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-4">
-          <div className="space-y-1">
-            <p className="text-slate-300">
-              NecroCode — Built for the AWS Kiroween Hackathon (Resurrection Category)
-            </p>
-            <p className="text-slate-500">
-              Developer: Ghulam Mustafa (Universiti Teknologi Malaysia) • Eligible for Best Student Project & Best Demo
-            </p>
-          </div>
-
-          <div className="flex items-center gap-4 text-slate-400">
-            <span className="flex items-center gap-1 text-emerald-400">
-              <CheckCircle2 className="h-3.5 w-3.5" />
-              12/12 Automated Tests Passing
-            </span>
-          </div>
+          <p className="text-slate-300">
+            NecroCode — Multi-Language Software Autopsy &amp; Resurrection Lab
+          </p>
+          <span className="text-slate-500">
+            Python 3.12 • Node.js 20 LTS • TypeScript 5.9 • Honest Sandbox Telemetry
+          </span>
         </div>
       </footer>
     </div>

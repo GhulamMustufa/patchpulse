@@ -1,57 +1,50 @@
 import { test, expect } from "@playwright/test";
 
-test.describe("Hackathon Blueprint E2E Smoke Tests", () => {
-  test("1. Landing page loads cleanly with headline and status badge", async ({ page }) => {
+test.describe("NecroCode E2E Smoke Tests", () => {
+  test("1. Landing page loads cleanly with NecroCode lab UI and zero console errors", async ({
+    page,
+  }) => {
+    const errors: string[] = [];
+    page.on("pageerror", (err) => errors.push(err.message));
+
     await page.goto("/");
-    await expect(page).toHaveTitle(/Hackathon/i);
-    await expect(page.locator("h1")).toBeVisible();
-    await expect(page.getByText("Official Hackathon Submission")).toBeVisible();
+    await expect(page).toHaveTitle(/NecroCode/i);
+    await expect(
+      page.getByRole("heading", { name: /SOFTWARE AUTOPSY & RESURRECTION LAB/i })
+    ).toBeVisible();
+    await expect(page.getByText(/Archivus Mortis/i)).toBeVisible();
+    expect(errors).toEqual([]);
   });
 
-  test("2. Theme toggle switches between dark and light modes cleanly", async ({ page }) => {
+  test("2. Selecting patient preset and running repair updates ECG and verification matrix honestly", async ({
+    page,
+  }) => {
     await page.goto("/");
-    const html = page.locator("html");
-    
-    // Check initial dark mode
-    await expect(html).toHaveClass(/dark/);
+    await page.getByRole("button", { name: /Diagnose & Repair/i }).click();
 
-    // Click toggle button
-    const themeBtn = page.getByRole("button", { name: /toggle theme/i });
-    await themeBtn.click();
-
-    // Verify dark class removed
-    await expect(html).not.toHaveClass(/dark/);
-
-    // Click again to toggle back
-    await themeBtn.click();
-    await expect(html).toHaveClass(/dark/);
+    await expect(page.getByText(/SYNTAX VERIFIED \(SANDBOX PENDING\)/i)).toBeVisible({
+      timeout: 5000,
+    });
+    await expect(page.getByText(/SANDBOX PENDING \(PHASE 3\)/i).first()).toBeVisible();
   });
 
-  test("3. 1-Click Guest Demo Bypass button navigates directly to /dashboard", async ({ page }) => {
+  test("3. Custom mode exposes language selector and preserves input", async ({ page }) => {
     await page.goto("/");
-    const demoButton = page.getByRole("link", { name: /explore live interactive demo/i });
-    await demoButton.click();
+    await page.getByRole("button", { name: /Paste Custom Code/i }).click();
 
-    await expect(page).toHaveURL(/.*dashboard/);
-    await expect(page.getByText("Project Command Center")).toBeVisible();
-    await expect(page.getByText("Active Sessions")).toBeVisible();
+    await expect(page.getByRole("group", { name: /Select source language/i })).toBeVisible();
+    await page.getByRole("button", { name: "javascript" }).click();
+    await expect(page.getByText(/Target: JAVASCRIPT/i)).toBeVisible();
   });
 
-  test("4. Magic Moment execution triggers telemetry logs and success state", async ({ page }) => {
+  test("4. Telemetry (/dashboard) and Docs (/docs) routes render NecroCode content", async ({
+    page,
+  }) => {
     await page.goto("/dashboard");
-    const executeButton = page.getByRole("button", { name: /execute magic moment demo/i });
-    await executeButton.click();
+    await expect(page.getByText(/NecroCode System Telemetry/i)).toBeVisible();
 
-    // Verify executing state
-    await expect(page.getByText(/executing/i)).toBeVisible();
-
-    // Await success telemetry
-    await expect(page.getByText(/autonomous workflow completed/i)).toBeVisible({ timeout: 5000 });
-  });
-
-  test("5. Interactive Documentation (/docs) loads with quickstart and copy button", async ({ page }) => {
     await page.goto("/docs");
-    await expect(page.getByText("Interactive Documentation")).toBeVisible();
-    await expect(page.getByText("Quickstart Guide")).toBeVisible();
+    await expect(page.getByText(/NecroCode Docs & API/i)).toBeVisible();
+    await expect(page.getByText(/Quickstart Guide/i)).toBeVisible();
   });
 });

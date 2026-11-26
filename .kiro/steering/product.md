@@ -1,10 +1,10 @@
 # Product Steering & Evaluation Guidelines
 
 ## Core Mission
-Deliver a fast, tactile, and verifiable product experience that addresses a high-friction problem in under 2 minutes of judge evaluation.
+Provide a verifiable multi-language software autopsy and modernization engine supporting Python 3.12, JavaScript, and TypeScript (Node.js 20 LTS) with isolated sandbox verification.
 
-## Non-Negotiable UX Principles
-1. **1-Click Guest Bypass:** Evaluators must be able to explore the full interactive experience without logging in or connecting wallets.
-2. **Zero Empty States:** Never show an empty dashboard. Pre-seed realistic data streams, metrics, and logs on initial render.
-3. **Honest Telemetry:** Clearly distinguish live execution from simulated demo fallbacks.
-4. **Verifiable Proof:** When the core action completes, produce a tangible artifact (PDF, markdown diff, audit certificate, or transaction receipt).
+## Non-Negotiable UX & Integrity Principles
+1. **1-Click Guest Evaluation:** Evaluators can explore pre-seeded patients, custom Python/JS/TS snippets, and public GitHub/ZIP ingestion without signup walls.
+2. **Honest Telemetry:** Clearly distinguish `DIAGNOSED`, `REPAIR_GENERATED`, `REPAIR_APPROVED`, `SYNTAX_VERIFIED` (`NO_TESTS_FOUND`), `TESTS_RUNNING`, `RESURRECTED`, `PARTIALLY_RESURRECTED`, `FAILED`, and `VERIFICATION_BLOCKED`.
+3. **Non-Destructive Patch Review:** Preserve original source files, display unified diffs and compiler diagnostics, validate syntax/types before accepting patches, and require explicit approval.
+4. **Isolated Worker Execution:** Untrusted Python, JavaScript, and TypeScript code runs strictly inside separate isolated workers (`sandbox-worker/`), never on the Next.js application host.

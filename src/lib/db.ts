@@ -1,7 +1,12 @@
 /**
- * Universal Database Client (Neon Serverless Postgres / Supabase)
+ * Universal Database Client (Neon Serverless Postgres / In-Memory Fallback)
  */
 import { neon } from "@neondatabase/serverless";
+
+export interface DbQueryResult {
+  simulated: boolean;
+  rows: Record<string, unknown>[];
+}
 
 export function getDbClient() {
   const url = process.env.DATABASE_URL;
@@ -12,8 +17,14 @@ export function getDbClient() {
   return neon(url);
 }
 
-export async function runQuery(sqlText: string, params: any[] = []) {
+export async function runQuery(
+  sqlText: string,
+  params: unknown[] = []
+): Promise<DbQueryResult> {
   const sql = getDbClient();
-  if (!sql) return { simulated: true, rows: [] };
-  return await sql(sqlText, params);
+  if (!sql) {
+    return { simulated: true, rows: [] };
+  }
+  const rows = (await sql(sqlText, params)) as Record<string, unknown>[];
+  return { simulated: false, rows };
 }
