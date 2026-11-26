@@ -1,34 +1,27 @@
 # 📋 Ordered Implementation Tasks: NecroCode
 
-> **Execution Protocol:** Follow dependency order. Never start a task until previous acceptance criteria pass.
+---
+
+### Phase 1: Engine & Patient Seeding
+- [ ] **Task 1.1:** Create `src/lib/necro-engine/patients.ts` with 2 real, rich legacy repositories (Patient #1: Python 2.7 `urllib2` archiver; Patient #2: Node.js 6 `request` webhook notifier).
+- [ ] **Task 1.2:** Build `src/lib/necro-engine/diagnoser.ts` to compute toxicity score, identify line-by-line syntax rot, and output the Pathology Report.
+- [ ] **Task 1.3:** Build `src/lib/necro-engine/resurrector.ts` to perform automated transformations (Python 2 $\rightarrow$ 3.12, Node CommonJS $\rightarrow$ ESM).
+- [ ] **Task 1.4:** Build `src/lib/necro-engine/verifier.ts` to simulate test execution and verify green pass rates.
+- [ ] **Task 1.5:** Write comprehensive Vitest unit tests in `src/lib/__tests__/necro_engine.test.ts` and ensure 100% pass rate.
 
 ---
 
-### Phase 1: Environment & Pre-Seeded Foundations
-- [ ] **Task 1.1:** Initialize directory, environment variables (`.env.example`), and branding constants.
-- [ ] **Task 1.2:** Seed realistic mock data in `src/lib/demo-data.ts` (zero empty states).
-- [ ] **Task 1.3:** Build `DemoBypassButton.tsx` and verify 1-click guest authentication.
+### Phase 2: Victorian Gothic UI & ECG Monitor
+- [ ] **Task 2.1:** Build `src/components/necro/ECGMonitor.tsx` (Canvas/SVG animated electrocardiogram pulsing heartbeat).
+- [ ] **Task 2.2:** Build `src/components/necro/PatientExhumationBar.tsx` (1-click preset selector with Patient metadata and cemetery dates).
+- [ ] **Task 2.3:** Build `src/components/necro/AutopsyReportCard.tsx` (Pathology findings, cause of death, decay meter).
+- [ ] **Task 2.4:** Build `src/components/necro/SideBySideDiff.tsx` (Interactive split view: red deceased legacy vs green resurrected modern code).
+- [ ] **Task 2.5:** Assemble complete morgue page in `src/app/page.tsx`.
 
 ---
 
-### Phase 2: Core Engine & Type Safety (Anti-Hallucination)
-- [ ] **Task 2.1:** Define TypeScript interfaces and runtime Zod schemas for all inputs/outputs.
-- [ ] **Task 2.2:** Implement the core processing pipeline / agent tool dispatcher.
-- [ ] **Task 2.3:** Write automated Vitest unit tests covering success, edge-case, and fallback paths.
-- [ ] **Task 2.4:** Run `npm run test` and verify 100% green pass rate.
-
----
-
-### Phase 3: Interactive UI & Tactile Experience
-- [ ] **Task 3.1:** Assemble the main responsive layout using Tailwind CSS and UI primitives.
-- [ ] **Task 3.2:** Wire the interactive input console with 2 built-in 1-click sample presets.
-- [ ] **Task 3.3:** Build the live visual execution canvas with reactive loading states and status badges.
-- [ ] **Task 3.4:** Add honest telemetry / proof disclosure panel.
-
----
-
-### Phase 4: Verification, Security & Production Readiness
-- [ ] **Task 4.1:** Run `npm run test:security` (Semgrep) to audit for secret leaks and unsafe calls.
-- [ ] **Task 4.2:** Run `npm run test:e2e` (Playwright) to verify headless browser user journeys.
-- [ ] **Task 4.3:** Build production bundle (`npm run build`) and verify zero TypeScript/lint errors.
-- [ ] **Task 4.4:** Draft Devpost / submission copy in `SUBMISSION.md` and prepare the 2-minute video script.
+### Phase 3: Kiro IDE Integration & Documentation
+- [ ] **Task 3.1:** Mirror specs into `.kiro/specs/` (`requirements.md`, `design.md`, `tasks.md`).
+- [ ] **Task 3.2:** Update `.kiro/hooks/validate.json` and `.kiro/steering/product.md`.
+- [ ] **Task 3.3:** Run `npm run test:all` (Vitest + Playwright) and `npm run test:security` (Semgrep).
+- [ ] **Task 3.4:** Prepare `SUBMISSION.md` with Devpost story, architecture explanation, and 2-minute video script.

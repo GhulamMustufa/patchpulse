@@ -1,6 +1,6 @@
 # 🏗️ Technical Architecture & Design: NecroCode
 
-> **Source Standard:** Spec Kit Architecture & OpenPencil Design Specification
+> **System Component Architecture & State Machine**
 
 ---
 
@@ -8,71 +8,89 @@
 
 ```mermaid
 flowchart TD
-    User["👤 User / Evaluator (Browser / Client)"]
+    Judge["👤 Judge / Developer"]
     
-    subgraph Frontend["Frontend Client (Next.js 15 App Router)"]
-        UI["Tailwind CSS + shadcn Components"]
-        GuestBypass["1-Click Guest Bypass Controller"]
-        State["Client State / Reactive Store"]
+    subgraph UI["Victorian Gothic Morgue UI (Next.js 15 + Tailwind)"]
+        PresetBar["⚰️ Patient Exhumation Bar (Python 2 / Node.js Presets)"]
+        ECGMonitor["💓 Animated Electrocardiogram (Canvas/SVG Heartbeat)"]
+        AutopsyReport["📜 Digital Pathology & Cause of Death Card"]
+        DiffViewer["🔍 Side-by-Side Code Diff (Legacy vs Modern)"]
+        TestRunner["🧪 Vital Signs & Unit Test Execution Console"]
     end
     
-    subgraph CoreEngine["Core Engine / Agent Pipeline"]
-        Router["Policy Router / Tool Dispatcher"]
-        Engine["Core Business Logic / Worker"]
-        Verifier["Deterministic Output Verifier"]
+    subgraph NecroEngine["NecroCode Engine (src/lib/necro-engine)"]
+        Scanner["AST Decay Scanner (diagnoser.ts)"]
+        Transformer["Syntax & Dependency Resurrector (resurrector.ts)"]
+        Verifier["Behavioral & Test Equivalence Verifier (verifier.ts)"]
+        Patients["Pre-Seeded Patient Vault (patients.ts)"]
     end
     
-    subgraph External["External Services & APIs"]
-        LLM["AI Model / Provider (Gemini / Bedrock / Claude)"]
-        DB["Database / Storage (Neon / SQLite / IndexedDB)"]
-        Protocols["Protocols / RPC (Base / Solana / EVM)"]
+    subgraph KiroIntegration["Kiro IDE Spec & Hook Layer (/.kiro)"]
+        KiroSpecs["/.kiro/specs/resurrection.md"]
+        KiroHooks["/.kiro/hooks/validate.json"]
+        KiroSteering["/.kiro/steering/tech.md"]
     end
     
-    User --> UI
-    UI --> GuestBypass
-    UI --> Router
-    Router --> Engine
-    Engine --> LLM
-    Engine --> DB
-    Engine --> Protocols
-    Engine --> Verifier
-    Verifier --> UI
+    Judge --> PresetBar
+    PresetBar --> Patients
+    PresetBar --> Scanner
+    Scanner --> AutopsyReport
+    Scanner --> ECGMonitor
+    AutopsyReport --> Transformer
+    Transformer --> DiffViewer
+    Transformer --> Verifier
+    Verifier --> TestRunner
+    Verifier --> ECGMonitor
+    NecroEngine <--> KiroIntegration
 ```
 
 ---
 
-## 2. Component Hierarchy & Layout Plan
-* **Shell:** Responsive Navbar (Logo, Status Badge, ThemeToggle, Demo Bypass Button).
-* **Main Stage:**
-  * Left / Top: Input Console (File upload, text prompt, or 1-click Preset Selector).
-  * Right / Bottom: Live Execution Canvas (Interactive results, animated status, output diff).
-* **Inspector:** Expandable Telemetry / Network Disclosure drawer (showing honest latency, model name, and zero-leak payload proof).
-
----
-
-## 3. Data Schema & Contracts (Zod / TypeScript)
-Define all inputs and outputs with strict runtime schemas to eliminate hallucinations:
+## 2. Patient Data Contract (TypeScript Interfaces)
 
 ```typescript
-// Example: Strict output constraint
-export interface VerificationResult {
+export type LanguageType = "python" | "javascript" | "typescript";
+export type VitalStatus = "DEAD" | "RESURRECTING" | "ALIVE";
+
+export interface NecroPatient {
   id: string;
-  timestamp: string;
-  status: "PASSED" | "FLAGGED" | "FAILED";
-  metrics: {
-    confidenceScore: number;
-    latencyMs: number;
-  };
-  findings: Array<{
-    code: string;
-    description: string;
-    severity: "low" | "medium" | "critical";
+  name: string;
+  deceasedYear: number;
+  language: LanguageType;
+  cemeteryLocation: string;
+  causeOfDeath: string[];
+  deadCode: string;
+  expectedModernCode: string;
+  testCases: Array<{
+    name: string;
+    legacyStatus: "FAIL" | "SYNTAX_ERROR";
+    resurrectedStatus: "PASS";
   }>;
+}
+
+export interface AutopsyReport {
+  patientId: string;
+  toxicityScore: number; // 0 to 100%
+  fatalErrors: Array<{
+    line: number;
+    rule: string;
+    description: string;
+    legacySnippet: string;
+    repairedSnippet: string;
+  }>;
+  summary: string;
+  resurrectedCode: string;
+  testPassRate: number; // 100%
 }
 ```
 
 ---
 
-## 4. Error Handling & Fallback Strategy
-* **Offline / Timeout:** Show simulated pre-seeded fallback data with a transparent `DEMO_MODE` badge instead of breaking.
-* **Input Validation:** Reject oversized inputs with clear, polite client-side warnings before triggering API calls.
+## 3. UI Layout & Visual Language
+* **Atmosphere:** Dark Gothic laboratory.
+* **Palette:**
+  * Background: `#0B0C10` (Dark Obsidian)
+  * Secondary Card: `#141821` (Morgue Slate)
+  * Toxic Accent: `#00FFA3` (Reanimation Green)
+  * Fatal Error Accent: `#FF4C4C` (Flatline Red)
+  * Text: `#E2E8F0` (Bone White)
