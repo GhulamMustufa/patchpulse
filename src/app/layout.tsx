@@ -4,8 +4,8 @@ import { ToastProvider } from "@/components/ui/Toast";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Hackathon MVP - Production-Grade Foundation",
-  description: "Dual-theme, skimmable typography, sub-50ms latency, zero-friction interactive demo.",
+  title: "NecroCode | AI Software Resurrection Lab (AWS Kiroween)",
+  description: "Autonomous digital autopsy and legacy repository resurrection engine powered by Kiro Spec-Driven Development.",
 };
 
 export default function RootLayout({
