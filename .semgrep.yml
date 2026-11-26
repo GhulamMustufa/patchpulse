@@ -1,0 +1,22 @@
+rules:
+  - id: hardcoded-secret-or-key
+    patterns:
+      - pattern-regex: '(?i)(api[_-]?key|secret[_-]?key|private[_-]?key|auth[_-]?token)\s*[:=]\s*["''][A-Za-z0-9_\-\.]{16,}["'']'
+    message: "Potential hardcoded secret or API key detected. Move to environment variables."
+    languages: [javascript, typescript, python]
+    severity: ERROR
+
+  - id: dangerous-eval-execution
+    patterns:
+      - pattern: eval(...)
+    message: "Avoid using eval() as it exposes the runtime to remote code execution vulnerabilities."
+    languages: [javascript, typescript]
+    severity: ERROR
+
+  - id: unhandled-promise-catch
+    patterns:
+      - pattern: fetch(...).then(...)
+      - pattern-not: fetch(...).then(...).catch(...)
+    message: "Network fetch calls should have an explicit .catch() block or use try/catch with async/await."
+    languages: [javascript, typescript]
+    severity: WARNING
