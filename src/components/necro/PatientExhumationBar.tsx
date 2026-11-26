@@ -1,172 +1,241 @@
 "use client";
 
 import React from "react";
+import { Code2, FolderGit2, Layers } from "lucide-react";
 import { LanguageType, NecroPatient } from "@/lib/necro-engine/types";
-import { PRESET_PATIENTS } from "@/lib/necro-engine/patients";
-import { Skull, Clock, MapPin, Sparkles, GitBranch } from "lucide-react";
 
 interface PatientExhumationBarProps {
+  patients?: NecroPatient[];
   selectedPatientId: string;
   onSelectPatient: (patient: NecroPatient) => void;
   isCustomMode: boolean;
   onToggleCustomMode: () => void;
   customLanguage: LanguageType;
-  onCustomLanguageChange: (language: LanguageType) => void;
-  isGitHubMode?: boolean;
-  onToggleGitHubMode?: () => void;
+  onCustomLanguageChange: (lang: LanguageType) => void;
+  isGitHubMode: boolean;
+  onToggleGitHubMode: () => void;
+  children?: React.ReactNode;
 }
 
+const LANG_LABEL: Record<LanguageType, { text: string; badgeClass: string }> = {
+  python: {
+    text: "Python",
+    badgeClass: "bg-sky-950/60 text-sky-300 border-sky-700/40",
+  },
+  javascript: {
+    text: "JavaScript",
+    badgeClass: "bg-amber-950/60 text-amber-300 border-amber-700/40",
+  },
+  typescript: {
+    text: "TypeScript",
+    badgeClass: "bg-indigo-950/60 text-indigo-300 border-indigo-700/40",
+  },
+};
+
 export function PatientExhumationBar({
+  patients = [],
   selectedPatientId,
   onSelectPatient,
   isCustomMode,
   onToggleCustomMode,
   customLanguage,
   onCustomLanguageChange,
-  isGitHubMode = false,
+  isGitHubMode,
   onToggleGitHubMode,
+  children,
 }: PatientExhumationBarProps) {
-  return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div>
-          <h2 className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wider text-slate-300">
-            <Skull className="h-4 w-4 text-purple-400" />
-            Repository Graveyard — Select Patient to Exhume
-          </h2>
-          <p className="text-xs text-slate-400">
-            Choose a pre-seeded historical patient, paste custom code, or ingest a public Python GitHub repository.
-          </p>
-        </div>
+  const activeTab: "samples" | "github" | "custom" = isGitHubMode
+    ? "github"
+    : isCustomMode
+      ? "custom"
+      : "samples";
 
-        <div className="flex flex-wrap items-center gap-2">
-          {onToggleGitHubMode && (
-            <button
-              type="button"
-              onClick={onToggleGitHubMode}
-              className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-mono transition-all ${
-                isGitHubMode
-                  ? "border-emerald-500 bg-emerald-950/40 text-emerald-300 shadow-sm"
-                  : "border-slate-800 bg-slate-900/60 text-slate-300 hover:border-slate-700 hover:text-white"
-              }`}
-            >
-              <GitBranch className="h-3.5 w-3.5" />
-              {isGitHubMode ? "GitHub Ingestion Active" : "Ingest GitHub Repo"}
-            </button>
-          )}
+  const handleSelectSamples = () => {
+    const current =
+      patients.find((p) => p.id === selectedPatientId) ?? patients[0];
+    if (current) onSelectPatient(current);
+  };
+
+  return (
+    <section
+      aria-label="Choose code source"
+      className="rounded-xl border border-slate-800 bg-[#070b14] p-4 space-y-4 shadow-lg"
+    >
+      {/* Clean 3-tab source switcher */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div
+          role="tablist"
+          aria-label="Code input source"
+          className="inline-flex rounded-lg bg-[#04070e] border border-slate-800 p-1 gap-1 self-start"
+        >
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === "samples"}
+            onClick={handleSelectSamples}
+            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors cursor-pointer ${
+              activeTab === "samples"
+                ? "bg-purple-600/25 text-purple-200 border border-purple-500/40"
+                : "text-slate-400 hover:text-slate-200 border border-transparent"
+            }`}
+          >
+            <Layers className="w-3.5 h-3.5" />
+            Sample Projects
+          </button>
 
           <button
             type="button"
-            onClick={onToggleCustomMode}
-            className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-mono transition-all ${
-              isCustomMode && !isGitHubMode
-                ? "border-purple-500 bg-purple-950/40 text-purple-300 shadow-sm"
-                : "border-slate-800 bg-slate-900/60 text-slate-300 hover:border-slate-700 hover:text-white"
+            role="tab"
+            aria-selected={activeTab === "github"}
+            onClick={() => {
+              if (!isGitHubMode) onToggleGitHubMode();
+            }}
+            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors cursor-pointer ${
+              activeTab === "github"
+                ? "bg-cyan-600/25 text-cyan-200 border border-cyan-500/40"
+                : "text-slate-400 hover:text-slate-200 border border-transparent"
             }`}
           >
-            <Sparkles className="h-3.5 w-3.5" />
-            {isCustomMode && !isGitHubMode ? "Custom Code Lab Active" : "Paste Custom Code"}
+            <FolderGit2 className="w-3.5 h-3.5" />
+            GitHub or ZIP
+          </button>
+
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === "custom"}
+            onClick={() => {
+              if (!isCustomMode) onToggleCustomMode();
+            }}
+            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors cursor-pointer ${
+              activeTab === "custom"
+                ? "bg-purple-600/25 text-purple-200 border border-purple-500/40"
+                : "text-slate-400 hover:text-slate-200 border border-transparent"
+            }`}
+          >
+            <Code2 className="w-3.5 h-3.5" />
+            Paste Code
           </button>
         </div>
+
+        <p className="text-xs text-slate-400">
+          {activeTab === "samples" &&
+            "Pick an outdated project below, then click Fix Code."}
+          {activeTab === "github" &&
+            "Load any public GitHub repo or upload a .zip archive."}
+          {activeTab === "custom" &&
+            "Select your language and paste broken code into the left editor."}
+        </p>
       </div>
 
-      {isCustomMode && !isGitHubMode && (
-        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-purple-900/60 bg-purple-950/20 px-4 py-2.5 text-xs font-mono">
-          <span className="text-purple-200">
-            Custom Subject Language Target:
-          </span>
-          <div className="flex items-center gap-2" role="group" aria-label="Select source language">
-            {(["python", "javascript", "typescript"] as LanguageType[]).map((lang) => (
+      {/* Tab 1: Sample Projects */}
+      {activeTab === "samples" && (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          {patients.map((patient) => {
+            const isSelected = patient.id === selectedPatientId;
+            const langInfo = LANG_LABEL[patient.language];
+            return (
               <button
-                key={lang}
+                key={patient.id}
                 type="button"
-                onClick={() => onCustomLanguageChange(lang)}
-                aria-pressed={customLanguage === lang}
-                className={`rounded-md border px-2.5 py-1 text-xs uppercase transition ${
-                  customLanguage === lang
-                    ? "border-purple-400 bg-purple-600/30 text-white font-semibold"
-                    : "border-slate-700 bg-slate-900/70 text-slate-400 hover:text-slate-200"
+                aria-pressed={isSelected}
+                onClick={() => onSelectPatient(patient)}
+                className={`text-left rounded-lg p-3.5 border transition-all cursor-pointer ${
+                  isSelected
+                    ? "bg-[#0d1424] border-purple-500/70 ring-1 ring-purple-500/30"
+                    : "bg-[#090e1a] border-slate-800 hover:border-slate-700"
                 }`}
               >
-                {lang}
+                <div className="flex items-center justify-between gap-2 mb-1.5">
+                  <span
+                    className={`px-2 py-0.5 rounded text-[11px] font-medium border ${langInfo.badgeClass}`}
+                  >
+                    {langInfo.text}
+                  </span>
+                  <span className="text-[11px] text-slate-400 font-mono">
+                    {patient.deceasedYear}
+                  </span>
+                </div>
+
+                <h3 className="text-sm font-semibold text-white truncate">
+                  {patient.name}
+                </h3>
+
+                <p className="text-xs text-slate-400 mt-1 line-clamp-2 leading-relaxed">
+                  {patient.tombstoneInscription}
+                </p>
+
+                {patient.legacyDependencies.length > 0 && (
+                  <div className="mt-2.5 flex items-center gap-1.5 flex-wrap">
+                    {patient.legacyDependencies.slice(0, 2).map((dep) => (
+                      <span
+                        key={dep}
+                        className="px-1.5 py-0.5 rounded bg-slate-900 text-slate-300 border border-slate-800 text-[11px] font-mono"
+                      >
+                        {dep}
+                      </span>
+                    ))}
+                    {patient.legacyDependencies.length > 2 && (
+                      <span className="text-[11px] text-slate-500">
+                        +{patient.legacyDependencies.length - 2} more
+                      </span>
+                    )}
+                  </div>
+                )}
               </button>
-            ))}
-          </div>
+            );
+          })}
         </div>
       )}
 
-      <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-        {PRESET_PATIENTS.map((patient) => {
-          const isSelected =
-            !isCustomMode && !isGitHubMode && selectedPatientId === patient.id;
+      {/* Tab 2: GitHub / ZIP children slot */}
+      {activeTab === "github" && children}
 
-          return (
-            <button
-              key={patient.id}
-              type="button"
-              onClick={() => onSelectPatient(patient)}
-              aria-pressed={isSelected}
-              className={`group relative text-left cursor-pointer overflow-hidden rounded-xl border p-4 transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400 ${
-                isSelected
-                  ? "border-purple-500/80 bg-purple-950/20 shadow-lg shadow-purple-950/30 ring-1 ring-purple-500/50"
-                  : "border-slate-800/80 bg-slate-900/40 hover:border-slate-700 hover:bg-slate-900/80"
-              }`}
+      {/* Tab 3: Paste Code language picker */}
+      {activeTab === "custom" && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-800 bg-[#090e1a] px-3.5 py-2.5">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-xs font-medium text-slate-300">
+              Code Language:
+            </span>
+            <div
+              role="group"
+              aria-label="Select source language"
+              className="inline-flex items-center gap-1.5"
             >
-              <div className="flex items-start justify-between gap-2 mb-2">
-                <div>
-                  <h3 className="font-semibold text-slate-100 group-hover:text-purple-300 transition-colors flex flex-wrap items-center gap-2">
-                    {patient.name}
-                    {isSelected && (
-                      <span className="rounded bg-purple-500/20 px-1.5 py-0.5 text-[10px] font-mono text-purple-300 border border-purple-500/40">
-                        ON OPERATING TABLE
-                      </span>
-                    )}
-                  </h3>
-                  <div className="flex flex-wrap items-center gap-2 text-xs font-mono text-slate-400 mt-0.5">
-                    <span className="flex items-center gap-1">
-                      <Clock className="h-3 w-3 text-rose-400" />
-                      Died: {patient.deceasedYear}
-                    </span>
-                    <span>•</span>
-                    <span className="flex items-center gap-1">
-                      <MapPin className="h-3 w-3 text-slate-500" />
-                      {patient.cemeteryLocation}
-                    </span>
-                  </div>
-                </div>
-
-                <span
-                  className={`rounded-md px-2 py-0.5 text-xs font-mono uppercase font-medium border ${
-                    patient.language === "python"
-                      ? "border-amber-800/60 bg-amber-950/30 text-amber-300"
-                      : "border-cyan-800/60 bg-cyan-950/30 text-cyan-300"
-                  }`}
-                >
-                  {patient.language}
-                </span>
-              </div>
-
-              <p className="text-xs italic text-slate-400 border-l-2 border-slate-700/60 pl-2.5 my-2.5">
-                &ldquo;{patient.tombstoneInscription}&rdquo;
-              </p>
-
-              <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-slate-800/60">
-                <span className="text-[11px] font-mono text-slate-500">
-                  Dead Dependencies:
-                </span>
-                {patient.legacyDependencies.map((dep, idx) => (
-                  <span
-                    key={idx}
-                    className="rounded bg-rose-950/40 border border-rose-900/50 px-1.5 py-0.5 text-[10px] font-mono text-rose-300"
+              {(["python", "javascript", "typescript"] as const).map((lang) => {
+                const active = customLanguage === lang;
+                return (
+                  <button
+                    key={lang}
+                    type="button"
+                    aria-pressed={active}
+                    onClick={() => onCustomLanguageChange(lang)}
+                    className={`px-2.5 py-1 rounded-md text-xs font-medium border transition-colors cursor-pointer ${
+                      active
+                        ? "bg-purple-600/30 text-purple-100 border-purple-500/60"
+                        : "bg-slate-900 text-slate-400 border-slate-800 hover:text-slate-200"
+                    }`}
                   >
-                    {dep}
-                  </span>
-                ))}
-              </div>
-            </button>
-          );
-        })}
-      </div>
-    </div>
+                    {LANG_LABEL[lang].text}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <span className="text-xs text-slate-400">
+            Target runtime:{" "}
+            <strong className="text-slate-200">
+              {customLanguage === "python"
+                ? "Python 3.12"
+                : customLanguage === "javascript"
+                  ? "Node.js 20"
+                  : "TypeScript 5.9"}
+            </strong>
+          </span>
+        </div>
+      )}
+    </section>
   );
 }
