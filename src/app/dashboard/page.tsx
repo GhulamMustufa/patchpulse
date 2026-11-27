@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import {
   Activity,
@@ -104,6 +105,15 @@ export default function DashboardPage() {
       <header className="border-b border-slate-800/80 bg-[#070b14]/90 backdrop-blur-md px-4 sm:px-6 py-3">
         <div className="max-w-6xl mx-auto flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-3">
+            <Link href="/" className="flex items-center gap-2 hover:opacity-90 transition-opacity">
+              <Image
+                src="/logo.png"
+                alt="PatchPulse logo"
+                width={28}
+                height={28}
+                className="rounded-md"
+              />
+            </Link>
             <Link
               href="/lab"
               className="inline-flex items-center gap-1.5 rounded-lg border border-slate-800 bg-slate-900/80 px-3 py-1.5 text-xs font-medium text-slate-200 hover:border-slate-700"

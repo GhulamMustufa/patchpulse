@@ -43,22 +43,35 @@ export function sanitizeSandboxOutput(text, jobDir) {
   return cleaned;
 }
 
-export function detectSandboxDriver() {
+export function detectSandboxDriver(
+  requiredImage = process.env.SANDBOX_DOCKER_IMAGE || "necrocode-sandbox:py312"
+) {
   const forced = process.env.SANDBOX_DRIVER;
 
-  // Check Docker daemon availability
+  // Check Docker daemon availability and required local image
   if (forced !== "seatbelt") {
     const dockerProbe = spawnSync("docker", ["info", "--format", "{{.ServerVersion}}"], {
       encoding: "utf8",
       timeout: 2500,
     });
     if (dockerProbe.status === 0) {
-      return {
-        driver: "docker",
-        detail: `Docker daemon active (${dockerProbe.stdout.trim()})`,
-      };
-    }
-    if (forced === "docker") {
+      const imageProbe = spawnSync("docker", ["image", "inspect", requiredImage], {
+        stdio: "ignore",
+        timeout: 2000,
+      });
+      if (imageProbe.status === 0) {
+        return {
+          driver: "docker",
+          detail: `Docker daemon active (${dockerProbe.stdout.trim()})`,
+        };
+      }
+      if (forced === "docker") {
+        return {
+          driver: "unavailable",
+          detail: `SANDBOX_DRIVER=docker requested, but image '${requiredImage}' is not built locally.`,
+        };
+      }
+    } else if (forced === "docker") {
       return {
         driver: "unavailable",
         detail: "SANDBOX_DRIVER=docker requested, but Docker daemon is not reachable.",

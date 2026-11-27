@@ -113,6 +113,6 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   const server = createWorkerServer({ token: WORKER_TOKEN });
   server.listen(PORT, HOST, () => {
     const d = detectSandboxDriver();
-    console.log(`NecroCode Multi-Runtime Sandbox Worker listening on http://${HOST}:${PORT} (${d.driver})`);
+    console.log(`PatchPulse Multi-Runtime Sandbox Worker listening on http://${HOST}:${PORT} (${d.driver})`);
   });
 }

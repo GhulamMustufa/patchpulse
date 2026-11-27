@@ -1,6 +1,6 @@
 import { test, expect } from "@playwright/test";
 
-test.describe("NecroCode E2E Smoke Tests", () => {
+test.describe("PatchPulse E2E Smoke Tests", () => {
   test("1. Landing page renders clearly with plain-English value prop and CTA to /lab", async ({
     page,
   }) => {
@@ -8,7 +8,7 @@ test.describe("NecroCode E2E Smoke Tests", () => {
     page.on("pageerror", (err) => errors.push(err.message));
 
     await page.goto("/");
-    await expect(page).toHaveTitle(/NecroCode/i);
+    await expect(page).toHaveTitle(/PatchPulse/i);
     await expect(
       page.getByRole("heading", { name: /Fix Broken Legacy Code/i })
     ).toBeVisible();
@@ -48,7 +48,7 @@ test.describe("NecroCode E2E Smoke Tests", () => {
     await expect(page.getByText(/Node\.js 20/i)).toBeVisible();
   });
 
-  test("4. System Status (/dashboard) and Guide (/docs) routes render NecroCode content", async ({
+  test("4. System Status (/dashboard) and Guide (/docs) routes render PatchPulse content", async ({
     page,
   }) => {
     await page.goto("/dashboard");

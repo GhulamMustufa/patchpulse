@@ -60,7 +60,9 @@ function ensureIsolatedTscCache() {
 }
 
 export function detectNodeSandboxDriver() {
-  const base = detectBaseDriver();
+  const nodeImage =
+    process.env.NODE_SANDBOX_DOCKER_IMAGE || "necrocode-sandbox:node20";
+  const base = detectBaseDriver(nodeImage);
   if (base.driver === "docker") {
     return { driver: "docker", detail: `Docker daemon active (node:20.19.4 + tsc@5.9.3)` };
   }

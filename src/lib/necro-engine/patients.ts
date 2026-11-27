@@ -46,7 +46,7 @@ if __name__ == "__main__":
         sys.exit(1)
     fetch_archive(sys.argv[1])`,
     expectedModernCode: `#!/usr/bin/env python3
-# Archivus Mortis - Resurrected to Modern Python 3.12 (via NecroCode & Kiro)
+# Archivus Mortis - Resurrected to Modern Python 3.12 (via PatchPulse)
 import sys
 import time
 import urllib.request
@@ -155,7 +155,7 @@ function dispatchNotification(webhookUrl, message, callback) {
 module.exports = {
     dispatchNotification: dispatchNotification
 };`,
-    expectedModernCode: `// Webhook Specter - Resurrected to Modern Node.js 20+ ESM (via NecroCode & Kiro)
+    expectedModernCode: `// Webhook Specter - Resurrected to Modern Node.js 20+ ESM (via PatchPulse)
 import crypto from 'node:crypto';
 
 export async function dispatchNotification(webhookUrl, message) {

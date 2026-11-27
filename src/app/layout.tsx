@@ -4,7 +4,7 @@ import { ToastProvider } from "@/components/ui/Toast";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "NecroCode | Fix Broken Legacy Code & Verify With Real Tests",
+  title: "PatchPulse | Fix Broken Legacy Code & Verify With Real Tests",
   description:
     "Repair outdated Python, JavaScript, and TypeScript code and verify every fix safely inside an offline test sandbox.",
 };

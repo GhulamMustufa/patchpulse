@@ -7,7 +7,7 @@ import {
   generateAutopsyReport,
 } from "../necro-engine";
 
-describe("NecroCode Resurrection Engine Unit Tests", () => {
+describe("PatchPulse Resurrection Engine Unit Tests", () => {
   it("should load pre-seeded historical dead patient repositories", () => {
     expect(PRESET_PATIENTS.length).toBeGreaterThanOrEqual(2);
 

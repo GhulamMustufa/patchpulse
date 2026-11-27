@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-NecroCode Isolated Python 3.12 Verification Runner.
+PatchPulse Isolated Python 3.12 Verification Runner.
 Executes strictly inside an ephemeral Docker container or Seatbelt sandbox.
 Never accepts shell commands from repository files.
 """

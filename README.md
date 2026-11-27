@@ -1,6 +1,6 @@
-# 🧟 NecroCode — AI Software Autopsy & Resurrection Lab
+# PatchPulse — AI Code Repair & Offline Verification Platform
 
-> **Dig up dead repositories, perform forensic autopsies, and resurrect them into verified modern code with Kiro Spec-Driven Development (SDD).**
+> **Fix outdated Python, JavaScript, and TypeScript code and prove every patch works inside an isolated offline test sandbox.**
 
 [![AWS Kiroween](https://img.shields.io/badge/AWS%20Kiroween-Resurrection%20Track-purple)](https://kiroween.devpost.com/)
 [![Student Track](https://img.shields.io/badge/Track-Best%20Student%20Project-cyan)](https://kiroween.devpost.com/)
@@ -97,7 +97,7 @@ npm install
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) to enter the NecroCode operating theatre.
+Open [http://localhost:3000](http://localhost:3000) to open PatchPulse.
 
 ---
 

@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useRef, useState } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import { PRESET_PATIENTS } from "@/lib/necro-engine/patients";
 import {
@@ -31,9 +32,9 @@ import { GitHubIngestPanel } from "@/components/necro/GitHubIngestPanel";
 import { SideBySideDiff } from "@/components/necro/SideBySideDiff";
 import { AutopsyReportCard } from "@/components/necro/AutopsyReportCard";
 import { useToast } from "@/components/ui/Toast";
-import { Skull, BookOpen, Activity } from "lucide-react";
+import { BookOpen, Activity } from "lucide-react";
 
-export default function NecroCodeLabPage() {
+export default function PatchPulseLabPage() {
   const { toast } = useToast();
 
   // Mode selection: preset | custom | github
@@ -870,13 +871,18 @@ export default function NecroCodeLabPage() {
       <header className="sticky top-0 z-50 border-b border-slate-800/80 bg-[#070b14]/90 backdrop-blur-md px-4 sm:px-6 py-3">
         <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-3">
           <Link href="/" className="flex items-center gap-3 hover:opacity-90 transition-opacity">
-            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-purple-950/80 border border-purple-700/60 text-purple-300 shadow-md shadow-purple-950/50">
-              <Skull className="h-5 w-5" />
-            </div>
+            <Image
+              src="/logo.png"
+              alt="PatchPulse logo"
+              width={36}
+              height={36}
+              className="rounded-lg shadow-md"
+              priority
+            />
             <div>
               <div className="flex items-center gap-2">
                 <span className="font-mono text-base font-bold tracking-tight text-slate-100">
-                  NECROCODE
+                  PATCHPULSE
                 </span>
                 <span className="rounded bg-purple-500/20 px-2 py-0.5 text-[10px] font-mono text-purple-300 border border-purple-500/40">
                   Python • JS • TS
@@ -1012,7 +1018,16 @@ export default function NecroCodeLabPage() {
 
       <footer className="border-t border-slate-800/80 bg-[#06080e] py-5 px-6 mt-10 text-xs text-slate-400">
         <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-3">
-          <p className="text-slate-300 font-medium">NecroCode</p>
+          <p className="inline-flex items-center gap-2 text-slate-300 font-medium">
+            <Image
+              src="/logo.png"
+              alt=""
+              width={20}
+              height={20}
+              className="rounded"
+            />
+            PatchPulse
+          </p>
           <span className="text-slate-500">
             Python 3.12 • Node.js 20 • TypeScript 5.9 • Offline Sandbox Verification
           </span>

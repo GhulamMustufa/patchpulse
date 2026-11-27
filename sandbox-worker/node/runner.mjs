@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * NecroCode Isolated Node.js 20 LTS & TypeScript 5.9.3 Verification Runner.
+ * PatchPulse Isolated Node.js 20 LTS & TypeScript 5.9.3 Verification Runner.
  * Executes strictly inside an ephemeral Docker container or macOS Seatbelt sandbox.
  * Never runs arbitrary package.json scripts or shell-concatenated commands.
  */

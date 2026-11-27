@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import {
   ArrowRight,
@@ -12,7 +13,6 @@ import {
   Lock,
   Play,
   ShieldCheck,
-  Skull,
   Sparkles,
 } from "lucide-react";
 
@@ -85,11 +85,16 @@ export default function LandingPage() {
       <header className="sticky top-0 z-50 border-b border-slate-800/80 bg-[#070b14]/90 backdrop-blur-md px-4 sm:px-6 py-3">
         <div className="max-w-6xl mx-auto flex flex-wrap items-center justify-between gap-3">
           <Link href="/" className="flex items-center gap-2.5">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-purple-950/80 border border-purple-700/60 text-purple-300">
-              <Skull className="h-4 w-4" />
-            </div>
+            <Image
+              src="/logo.png"
+              alt="PatchPulse logo"
+              width={32}
+              height={32}
+              className="rounded-lg shadow-sm"
+              priority
+            />
             <span className="font-mono text-base font-bold tracking-tight text-white">
-              NECROCODE
+              PATCHPULSE
             </span>
           </Link>
 
@@ -143,7 +148,7 @@ export default function LandingPage() {
             </h1>
 
             <p className="text-base text-slate-300 leading-relaxed max-w-xl">
-              Load a public GitHub repo or paste outdated code. NecroCode finds what broke, repairs it safely, and tests every fix inside an offline sandbox.
+              Load a public GitHub repo or paste outdated code. PatchPulse finds what broke, repairs it safely, and tests every fix inside an offline sandbox.
             </p>
 
             <div className="flex flex-wrap items-center gap-3 pt-1">
@@ -255,7 +260,7 @@ export default function LandingPage() {
         <section aria-label="Platform highlights" className="py-10 border-t border-slate-800/70">
           <div className="mb-6 space-y-1">
             <h2 className="text-xl sm:text-2xl font-bold text-white">
-              Why Teams Trust NecroCode
+              Why Teams Trust PatchPulse
             </h2>
             <p className="text-sm text-slate-400">
               Built for real code verification—not blind AI guesses.
@@ -456,7 +461,16 @@ export default function LandingPage() {
 
       <footer className="border-t border-slate-800/80 bg-[#06080e] py-5 px-4 sm:px-6 text-xs text-slate-400">
         <div className="max-w-6xl mx-auto flex flex-wrap items-center justify-between gap-3">
-          <span className="text-slate-300 font-medium">NecroCode</span>
+          <span className="inline-flex items-center gap-2 text-slate-300 font-medium">
+            <Image
+              src="/logo.png"
+              alt=""
+              width={20}
+              height={20}
+              className="rounded"
+            />
+            PatchPulse
+          </span>
           <div className="flex items-center gap-4">
             <Link href="/lab" className="hover:text-white">
               Workspace

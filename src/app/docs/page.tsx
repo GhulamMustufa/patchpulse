@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import {
   Activity,
@@ -22,6 +23,15 @@ export default function DocsPage() {
       <header className="border-b border-slate-800/80 bg-[#070b14]/90 backdrop-blur-md px-4 sm:px-6 py-3">
         <div className="max-w-6xl mx-auto flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-3">
+            <Link href="/" className="flex items-center gap-2 hover:opacity-90 transition-opacity">
+              <Image
+                src="/logo.png"
+                alt="PatchPulse logo"
+                width={28}
+                height={28}
+                className="rounded-md"
+              />
+            </Link>
             <Link
               href="/lab"
               className="inline-flex items-center gap-1.5 rounded-lg border border-slate-800 bg-slate-900/80 px-3 py-1.5 text-xs font-medium text-slate-200 hover:border-slate-700"
@@ -47,7 +57,7 @@ export default function DocsPage() {
       <main className="max-w-6xl mx-auto px-4 py-8 space-y-6">
         <div className="space-y-1">
           <h2 className="text-xl font-bold text-white">
-            How NecroCode Works
+            How PatchPulse Works
           </h2>
           <p className="text-sm text-slate-400">
             Clear documentation for repairing legacy Python, JavaScript, and TypeScript projects.
@@ -322,7 +332,7 @@ export default function DocsPage() {
                 <strong>No Lifecycle Scripts:</strong> Package postinstall and arbitrary shell scripts are blocked.
               </li>
               <li>
-                <strong>Honest Fail-Closed Status:</strong> If an isolation driver (Docker or macOS Seatbelt) is unavailable or external packages cannot be resolved safely, NecroCode returns Tests Blocked instead of faking a pass.
+                <strong>Honest Fail-Closed Status:</strong> If an isolation driver (Docker or macOS Seatbelt) is unavailable or external packages cannot be resolved safely, PatchPulse returns Tests Blocked instead of faking a pass.
               </li>
             </ul>
           </div>

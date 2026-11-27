@@ -74,7 +74,7 @@ export function parsePublicGitHubUrl(rawUrl: string): ParsedGitHubRepoRef {
 function githubHeaders(): Record<string, string> {
   const headers: Record<string, string> = {
     Accept: "application/vnd.github+json",
-    "User-Agent": "NecroCode-Autopsy-Lab/1.0",
+    "User-Agent": "PatchPulse-Lab/1.0",
     "X-GitHub-Api-Version": "2022-11-28",
   };
   if (process.env.GITHUB_TOKEN) {

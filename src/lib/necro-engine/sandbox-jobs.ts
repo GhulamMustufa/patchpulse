@@ -190,7 +190,7 @@ export async function submitSandboxExecutionJob(
     job.status = "BLOCKED";
     job.resurrectionState = "VERIFICATION_BLOCKED";
     job.error =
-      "Unsupported repository language. NecroCode supports Python 3.12, JavaScript, and TypeScript.";
+      "Unsupported repository language. PatchPulse supports Python 3.12, JavaScript, and TypeScript.";
     job.completedAt = new Date().toISOString();
     return { ok: true, job, deduplicated: false };
   }
