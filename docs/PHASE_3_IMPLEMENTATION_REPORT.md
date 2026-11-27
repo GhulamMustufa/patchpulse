@@ -1,4 +1,4 @@
-# NecroCode — Phase 3 Implementation Report
+# PatchPulse (formerly NecroCode) — Phase 3 Implementation Report
 
 **Date:** 2026-11-26  
 **Objective:** Implement isolated Python 3.12 sandbox execution, controlled dependency policy, authenticated worker job management, real security isolation tests, and truthful resurrection states.
@@ -25,10 +25,10 @@
 
 ## 2. Security & Verification Deliverables
 
-* [SANDBOX_ARCHITECTURE.md](file:///Users/mac/Desktop/hackathones/active/2026-11-necrocode/docs/security/SANDBOX_ARCHITECTURE.md)
-* [SANDBOX_THREAT_MODEL.md](file:///Users/mac/Desktop/hackathones/active/2026-11-necrocode/docs/security/SANDBOX_THREAT_MODEL.md)
-* [SANDBOX_TEST_RESULTS.md](file:///Users/mac/Desktop/hackathones/active/2026-11-necrocode/docs/security/SANDBOX_TEST_RESULTS.md)
-* [VERIFICATION_ENGINE.md](file:///Users/mac/Desktop/hackathones/active/2026-11-necrocode/docs/qa/VERIFICATION_ENGINE.md)
+* [SANDBOX_ARCHITECTURE.md](./security/SANDBOX_ARCHITECTURE.md)
+* [SANDBOX_THREAT_MODEL.md](./security/SANDBOX_THREAT_MODEL.md)
+* [SANDBOX_TEST_RESULTS.md](./security/SANDBOX_TEST_RESULTS.md)
+* [VERIFICATION_ENGINE.md](./qa/VERIFICATION_ENGINE.md)
 
 ---
 

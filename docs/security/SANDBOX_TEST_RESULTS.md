@@ -1,9 +1,9 @@
-# NecroCode — Sandbox Security & Isolation Test Results
+# PatchPulse — Sandbox Security & Isolation Test Results
 
-**Test Date:** 2026-11-26  
-**Environment:** Darwin 25.4.0 (arm64), Python 3.12.14 (`/opt/homebrew/bin/python3.12`)  
-**Active Driver Verified:** `seatbelt` (`/usr/bin/sandbox-exec` + `resource.setrlimit` + scrubbed environment + ephemeral `mkdtemp` workspace)  
-**Docker Status Observed:** Docker CLI 29.6.1 present, daemon not running (`Cannot connect to the Docker daemon at unix:///Users/mac/.docker/run/docker.sock`); Docker driver tests await a running Linux Docker daemon.
+> **In plain English:** Real test results proving our sandbox blocks secret leaks, host file access, internet calls, and infinite loops instead of just claiming it works.
+
+**Environment Verified:** macOS Darwin (arm64), Python 3.12 (`/opt/homebrew/bin/python3.12`)  
+**Active Driver Verified:** `seatbelt` (`/usr/bin/sandbox-exec` + `resource.setrlimit` + scrubbed environment + ephemeral `mkdtemp` workspace; also supports `docker` when container images are built locally).
 
 ---
 

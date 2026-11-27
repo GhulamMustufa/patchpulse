@@ -1,4 +1,6 @@
-# NecroCode — Multi-Language Sandbox Threat Model (Python, JS, TS)
+# PatchPulse — Multi-Language Sandbox Threat Model (Python, JS, TS)
+
+> **In plain English:** A quick security checklist showing how PatchPulse keeps host secrets, files, and the network safe across Python, JavaScript, and TypeScript test runs.
 
 **Scope:** Multi-language ingestion, dependency inspection, Python 3.12 worker, and Node.js 20 / TypeScript 5.9 worker.
 

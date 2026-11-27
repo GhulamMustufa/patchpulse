@@ -1,11 +1,10 @@
-# 📋 🎃 AWS KIROWEEN / KIRO IDE SPRINT: NecroCode
+# 📋 🎃 Sprint Brief: PatchPulse *(originally started as NecroCode)*
 
 - **Project Type:** KIRO
 - **Platform / Client:** Devpost
-- **Prize / Reward:** ,000 Cash
 - **Target Deadline:** Dec 4, 2026
-- **Operating Constitution:** See [AGENTS.md](file:///Users/mac/Desktop/hackathones/active/2026-11-necrocode/AGENTS.md)
-- **Specifications:** See [specs/](file:///Users/mac/Desktop/hackathones/active/2026-11-necrocode/specs)
+- **Operating Constitution:** See [AGENTS.md](./AGENTS.md)
+- **Specifications:** See [specs/](./specs)
 
 ---
 

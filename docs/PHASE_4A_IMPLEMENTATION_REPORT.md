@@ -1,4 +1,4 @@
-# NecroCode — Phase 4A Implementation Report (JavaScript & TypeScript Support)
+# PatchPulse (formerly NecroCode) — Phase 4A Implementation Report (JavaScript & TypeScript Support)
 
 **Date:** 2026-11-26  
 **HEAD Commit Baseline:** `4134b9e` (no new commit created because working tree contained uncommitted Phase 2 & Phase 3 changes)

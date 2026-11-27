@@ -1,4 +1,4 @@
-# 📋 Ordered Implementation Tasks: NecroCode
+# 📋 Ordered Implementation Tasks: PatchPulse
 
 ---
 

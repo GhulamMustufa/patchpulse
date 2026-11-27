@@ -1,4 +1,4 @@
-# NecroCode — Phase 2 Implementation Report
+# PatchPulse (formerly NecroCode) — Phase 2 Implementation Report
 
 **Date:** 2026-11-26  
 **Scope:** Stages 1–7 (Critical defect resolution, real GitHub/ZIP ingestion, real Python diagnosis, Gemini AI + AST repair synthesis, non-executing verification preparation, UI/reporting integration, Kiro artifact synchronization, and test coverage).

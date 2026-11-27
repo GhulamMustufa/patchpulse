@@ -1,6 +1,8 @@
-# NecroCode — Sandbox Threat Model
+# PatchPulse — Python Sandbox Threat Model
 
-**Scope:** Untrusted Python repository ingestion, dependency preparation, worker API, and isolated execution runtime.
+> **In plain English:** This table lists every security risk when running untrusted Python code (secret theft, file reads, internet access, infinite loops, and fork bombs) and how PatchPulse blocks it.
+
+**Scope:** Untrusted Python repository ingestion, dependency safety checks, worker API, and isolated execution runtime.
 
 ---
 
