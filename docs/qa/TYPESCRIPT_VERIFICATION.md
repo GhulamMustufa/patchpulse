@@ -1,8 +1,10 @@
-# NecroCode — TypeScript Verification Specification
+# PatchPulse — TypeScript Verification Guide
+
+> **In plain English:** PatchPulse validates `tsconfig.json` safely, runs real TypeScript type checking (`tsc --noEmit`), and runs compiled tests offline when test files exist.
 
 **Worker:** `sandbox-worker/node/runner.mjs` + `src/lib/necro-engine/node-diagnoser.ts`  
 **Compiler:** Pinned `typescript@5.9.3`  
-**Status:** Implemented & Tested locally (`seatbelt` driver).
+**Status:** Implemented & tested locally (`seatbelt` driver; `docker` supported when image is built).
 
 ---
 

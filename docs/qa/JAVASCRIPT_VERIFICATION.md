@@ -1,8 +1,10 @@
-# NecroCode — JavaScript Verification Specification
+# PatchPulse — JavaScript Verification Guide
+
+> **In plain English:** PatchPulse checks JavaScript syntax without running top-level code first, detects CommonJS vs ES Modules, and runs built-in `node:test` suites inside an offline sandbox.
 
 **Worker:** `sandbox-worker/node/runner.mjs`  
 **Runtime:** Node.js `20.19.4` LTS  
-**Status:** Implemented & Tested locally (`seatbelt` driver).
+**Status:** Implemented & tested locally (`seatbelt` driver; `docker` supported when image is built).
 
 ---
 

@@ -1,4 +1,6 @@
-# NecroCode — Verification Engine Specification
+# PatchPulse — Python Verification Guide
+
+> **In plain English:** PatchPulse checks Python syntax safely, discovers real tests, runs them inside an offline sandbox, and only marks a project as fixed if tests actually pass.
 
 **Target Runtime:** Python 3.12 (`sandbox-worker/runner.py`)  
 **Orchestrator:** `src/lib/necro-engine/sandbox-jobs.ts` + `POST /api/sandbox/execute`

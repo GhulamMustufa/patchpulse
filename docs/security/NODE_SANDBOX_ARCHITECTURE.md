@@ -1,6 +1,8 @@
-# NecroCode — Node.js & TypeScript Sandbox Architecture
+# PatchPulse — Node.js & TypeScript Sandbox Architecture
 
-**Status:** Implemented & Tested Locally (`seatbelt` driver); Linux `docker` driver implemented, awaiting live Linux Docker daemon verification.  
+> **In plain English:** JavaScript and TypeScript projects run in an offline Node.js 20 worker (`sandbox-worker/node/`), separate from the web server, with zero host secrets and blocked `npm install` scripts.
+
+**Status:** Implemented & tested locally (`seatbelt` driver; automatically picks `docker` when the container image is built locally).  
 **Pinned Runtimes:** Node.js `20.19.4` LTS (`node:20.19.4-bookworm-slim`), TypeScript `5.9.3`.
 
 ---

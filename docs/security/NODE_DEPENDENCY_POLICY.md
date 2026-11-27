@@ -1,7 +1,9 @@
-# NecroCode — Node.js Controlled Dependency Policy
+# PatchPulse — Node.js Dependency Safety Rules
+
+> **In plain English:** Before any Node.js or TypeScript code runs, PatchPulse scans `package.json` and `.npmrc` to block unsafe install scripts, custom registries, and external packages that cannot run offline.
 
 **Module:** `src/lib/necro-engine/node-dependency-policy.ts`  
-**Status:** Implemented & Tested locally.
+**Status:** Implemented & tested locally.
 
 ---
 

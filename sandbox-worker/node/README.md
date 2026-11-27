@@ -1,6 +1,6 @@
-# NecroCode Node.js & TypeScript Sandbox Worker
+# PatchPulse Node.js & TypeScript Sandbox Worker
 
-Isolated execution worker for JavaScript (`.js`, `.mjs`, `.cjs`) and TypeScript (`.ts`, `.tsx`) verification.
+Runs untrusted JavaScript (`.js`, `.mjs`, `.cjs`) and TypeScript (`.ts`, `.tsx`) tests inside an isolated offline sandbox.
 
 ## Pinned Runtime Versions
 - **Node.js LTS:** `20.19.4` (`node:20.19.4-bookworm-slim`)

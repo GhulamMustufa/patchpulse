@@ -1,7 +1,8 @@
-# NecroCode — Phase 3 Sandbox Execution Architecture
+# PatchPulse — Sandbox Execution Architecture
 
-**Status:** Design Baseline (Phase 3)  
-**Environment Verified:** Darwin 25.4.0 (arm64), Python 3.12.14 (`/opt/homebrew/bin/python3.12`), Docker CLI 29.6.1 (daemon not running locally), `/usr/bin/sandbox-exec` (Seatbelt available locally).
+> **In plain English:** Submitted code never runs inside the Next.js web server. It runs inside an offline, locked-down worker with strict time, memory, and disk limits—and if isolation isn't available, tests are blocked instead of faking a pass.
+
+**Environment Verified:** macOS Darwin (arm64), Python 3.12 (`/opt/homebrew/bin/python3.12`), `/usr/bin/sandbox-exec` (Seatbelt), and optional Docker (`docker image inspect` verified before selecting Docker).
 
 ---
 
@@ -17,7 +18,7 @@ Instead, Next.js acts strictly as an authenticated job orchestrator and UI gatew
 
 ```mermaid
 flowchart LR
-    UI["NecroCode UI (Next.js Client)"] --> API["Next.js Job API (/api/sandbox/execute, /api/sandbox/jobs/[id])"]
+    UI["PatchPulse UI (/lab)"] --> API["Next.js Job API (/api/sandbox/execute, /api/sandbox/jobs/[id])"]
     API -->|"Bearer Token + Zod Validated Job"| Worker["Separate Sandbox Worker (sandbox-worker/server.mjs)"]
     Worker -->|"Pre-Execution"| DepGate["Dependency Policy & Path/Symlink Gate"]
     DepGate -->|"Production Driver"| Docker["Ephemeral Docker Container (--network=none, --read-only, --cap-drop=ALL, nobody)"]
