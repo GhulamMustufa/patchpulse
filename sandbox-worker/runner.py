@@ -12,6 +12,7 @@ import os
 import py_compile
 import resource
 import sys
+import tempfile
 import time
 import traceback
 import unittest
@@ -60,9 +61,10 @@ def is_test_file(rel_path: str) -> bool:
 
 def compile_all_python(py_files):
     syntax_errors = []
-    for rel, path in py_files:
+    for idx, (rel, path) in enumerate(py_files):
+        pyc_path = os.path.join(tempfile.gettempdir(), f"pp_{os.getpid()}_{idx}.pyc")
         try:
-            py_compile.compile(str(path), doraise=True)
+            py_compile.compile(str(path), cfile=pyc_path, doraise=True)
         except py_compile.PyCompileError as exc:
             syntax_errors.append({
                 "file": rel,
@@ -73,6 +75,12 @@ def compile_all_python(py_files):
                 "file": rel,
                 "message": f"{type(exc).__name__}: {exc}",
             })
+        finally:
+            try:
+                if os.path.exists(pyc_path):
+                    os.unlink(pyc_path)
+            except OSError:
+                pass
     return syntax_errors
 
 

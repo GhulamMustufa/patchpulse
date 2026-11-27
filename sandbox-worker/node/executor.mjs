@@ -223,7 +223,7 @@ export async function runIsolatedNodeJob(input) {
         "--user=65534:65534",
         "--memory=256m",
         "--memory-swap=256m",
-        "--cpus=0.5",
+        "--cpus=1",
         "--pids-limit=32",
         "--ulimit",
         "nofile=64:64",

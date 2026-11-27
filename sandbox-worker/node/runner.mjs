@@ -269,7 +269,7 @@ function runTypeScriptCheck(tsFiles, hasTsConfig) {
   };
 }
 
-function compileTypeScriptForTestRun(tsFiles) {
+function compileTypeScriptForTestRun(tsFiles, hasTsConfig) {
   let outDir;
   try {
     outDir = fs.mkdtempSync(path.join(os.tmpdir(), "necro-ts-out-"));
@@ -277,33 +277,49 @@ function compileTypeScriptForTestRun(tsFiles) {
     outDir = path.join(WORKSPACE, "__necro_dist__");
     fs.mkdirSync(outDir, { recursive: true });
   }
-  // Emit CommonJS cleanly into outDir under /tmp (writable in Seatbelt/Docker tmpfs)
-  const proc = spawnSync(
-    process.execPath,
-    [
-      TSC_BIN,
-      "--pretty",
-      "false",
-      "--target",
-      "ES2022",
-      "--module",
-      "CommonJS",
-      "--moduleResolution",
-      "Node",
-      "--esModuleInterop",
-      "--skipLibCheck",
-      "--outDir",
-      outDir,
-      "--rootDir",
-      WORKSPACE,
-      ...tsFiles.map((f) => path.join(WORKSPACE, f)),
-    ],
-    {
-      cwd: WORKSPACE,
-      encoding: "utf8",
-      timeout: 8000,
-    }
-  );
+  const tscArgs = hasTsConfig
+    ? [
+        TSC_BIN,
+        "--pretty",
+        "false",
+        "-p",
+        path.join(WORKSPACE, "tsconfig.json"),
+        "--noEmit",
+        "false",
+        "--module",
+        "CommonJS",
+        "--moduleResolution",
+        "Node",
+        "--outDir",
+        outDir,
+        "--rootDir",
+        WORKSPACE,
+      ]
+    : [
+        TSC_BIN,
+        "--pretty",
+        "false",
+        "--strict",
+        "--target",
+        "ES2022",
+        "--module",
+        "CommonJS",
+        "--moduleResolution",
+        "Node",
+        "--esModuleInterop",
+        "--skipLibCheck",
+        "--outDir",
+        outDir,
+        "--rootDir",
+        WORKSPACE,
+        ...tsFiles.map((f) => path.join(WORKSPACE, f)),
+      ];
+  // Single pass: enforce strict TypeScript diagnostics AND emit runnable CJS into /tmp
+  const proc = spawnSync(process.execPath, tscArgs, {
+    cwd: WORKSPACE,
+    encoding: "utf8",
+    timeout: 9000,
+  });
 
   // Add package.json { "type": "commonjs" } in outDir so .js files load cleanly as CJS
   fs.writeFileSync(
@@ -313,12 +329,15 @@ function compileTypeScriptForTestRun(tsFiles) {
   );
 
   const combined = `${proc.stdout || ""}\n${proc.stderr || ""}`.trim();
-  const remainingErrors = parseTscDiagnostics(combined).filter((d) => d.severity === "ERROR");
+  const tsDiags = parseTscDiagnostics(combined);
+  const remainingErrors = tsDiags.filter((d) => d.severity === "ERROR");
+  const passed = proc.status === 0 || (remainingErrors.length === 0 && combined.includes("TS2307"));
 
   return {
-    ok: proc.status === 0 || remainingErrors.length === 0,
+    ok: passed,
     outDir,
     output: combined,
+    tsDiagnostics: tsDiags,
   };
 }
 
@@ -441,13 +460,29 @@ function main() {
     return;
   }
 
+  const usesUnsupportedRunner = testFiles.some((tf) => {
+    const src = fs.readFileSync(path.join(WORKSPACE, tf), "utf8");
+    return /\bfrom\s+['"]vitest['"]|\bfrom\s+['"]@jest\/globals['"]/.test(src);
+  });
+
   let tsPassed = true;
+  let compiledTmpDir = null;
   if (tsFiles.length > 0) {
-    const tsRes = runTypeScriptCheck(tsFiles, tsconfigSafety.exists);
-    tsPassed = tsRes.passed;
-    tsDiagnostics.push(...tsRes.tsDiagnostics);
-    if (!tsRes.passed && tsRes.tsDiagnostics.length === 0) {
-      syntaxErrors.push({ file: "tsconfig.json", message: tsRes.rawOutput || "TypeScript check failed." });
+    if (testFiles.length > 0 && !usesUnsupportedRunner) {
+      const compiled = compileTypeScriptForTestRun(tsFiles, tsconfigSafety.exists);
+      compiledTmpDir = compiled.outDir;
+      tsPassed = compiled.ok;
+      tsDiagnostics.push(...compiled.tsDiagnostics);
+      if (!compiled.ok && compiled.tsDiagnostics.length === 0) {
+        syntaxErrors.push({ file: "tsconfig.json", message: compiled.output || "TypeScript check failed." });
+      }
+    } else {
+      const tsRes = runTypeScriptCheck(tsFiles, tsconfigSafety.exists);
+      tsPassed = tsRes.passed;
+      tsDiagnostics.push(...tsRes.tsDiagnostics);
+      if (!tsRes.passed && tsRes.tsDiagnostics.length === 0) {
+        syntaxErrors.push({ file: "tsconfig.json", message: tsRes.rawOutput || "TypeScript check failed." });
+      }
     }
   }
 
@@ -455,6 +490,9 @@ function main() {
   const syntaxValid = syntaxErrors.length === 0 && tsPassed && !hasFatalDiag;
 
   if (!syntaxValid) {
+    if (compiledTmpDir) {
+      try { fs.rmSync(compiledTmpDir, { recursive: true, force: true }); } catch {}
+    }
     emitResult(
       {
         status: "FAILED",
@@ -504,12 +542,6 @@ function main() {
     return;
   }
 
-  // Check if tests rely on unsupported external test runners (Jest/Vitest)
-  const usesUnsupportedRunner = testFiles.some((tf) => {
-    const src = fs.readFileSync(path.join(WORKSPACE, tf), "utf8");
-    return /\bfrom\s+['"]vitest['"]|\bfrom\s+['"]@jest\/globals['"]/.test(src);
-  });
-
   if (usesUnsupportedRunner) {
     emitResult(
       {
@@ -539,34 +571,9 @@ function main() {
 
   // Execute node:test / assertion tests
   let runnableTestPaths = [];
-  let compiledTmpDir = null;
 
   try {
-    if (tsFiles.length > 0) {
-      const compiled = compileTypeScriptForTestRun(tsFiles);
-      compiledTmpDir = compiled.outDir;
-      if (!compiled.ok) {
-        emitResult(
-          {
-            status: "FAILED",
-            syntaxValid: false,
-            syntaxErrors: [{ file: "(tsc emit)", message: compiled.output }],
-            tsDiagnostics,
-            totalTests: 0,
-            passedTests: 0,
-            failedTests: 0,
-            skippedTests: 0,
-            failures: [],
-            durationMs: Date.now() - t0,
-            exitCode: 1,
-            runner: "tsc5.9.3",
-            logs: "Failed to compile TypeScript files for test execution.",
-          },
-          1
-        );
-        return;
-      }
-
+    if (tsFiles.length > 0 && compiledTmpDir) {
       for (const tf of testFiles) {
         if (isTsFile(tf)) {
           const compiledRel = tf.replace(/\.(ts|tsx|mts|cts)$/i, ".js");
